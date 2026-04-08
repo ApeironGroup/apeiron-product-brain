@@ -758,7 +758,11 @@ async function extractSingleFile(idx){
   const{data:fnData,error:fnError}=await sb.functions.invoke('extract',{
     body:{pdf_base64:entry.pdfB64,product_code:entry.code}
   });
-  if(fnError) throw new Error(fnError.message||'Edge Function call failed');
+  if(fnError){
+    // Try to extract the real error from the response context
+    const msg=fnError.context?.body?JSON.parse(new TextDecoder().decode(fnError.context.body)).error:fnError.message;
+    throw new Error(msg||'Edge Function call failed');
+  }
   if(fnData.error) throw new Error(fnData.error);
   const data=fnData;
   data.product_code=entry.code;
