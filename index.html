@@ -793,8 +793,8 @@ function showExtractionResult(){
     html+=`<div class="ext-section-title">${sec.label}</div><div class="ext-fields-grid">`;
     sec.fields.forEach(fld=>{
       const raw=d[fld];
-      const val=Array.isArray(raw)?raw.join(', '):(raw||'');
-      const isTbc=!raw||raw==='TBC';
+      const val=Array.isArray(raw)?raw.join(', '):(raw!=null?String(raw):'');
+      const isTbc=raw==null||raw===''||raw==='TBC';
       const long=val.length>60;
       const label=LABELS[fld]||fld;
       if(long){
