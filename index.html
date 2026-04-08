@@ -6,6 +6,7 @@
 <title>Product Brain — Apeiron International</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root {
   --claret: #691C32;
@@ -204,10 +205,39 @@ html,body{height:100%;background:#f7f5f2;color:var(--text-primary);font-family:'
 .stat-card.accent .stat-label{color:rgba(255,255,255,0.6)}
 
 input[type=file]{display:none}
+
+/* Login screen */
+.login-screen{position:fixed;inset:0;z-index:1000;background:#f7f5f2;display:flex;align-items:center;justify-content:center}
+.login-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-lg);padding:40px 36px;width:100%;max-width:380px;text-align:center}
+.login-logo{height:36px;margin-bottom:8px}
+.login-subtitle{font-size:11px;color:var(--khaki);letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}
+.login-title{font-size:20px;font-weight:600;color:var(--claret);margin-bottom:6px}
+.login-desc{font-size:13px;color:var(--text-muted);margin-bottom:24px}
+.login-field{width:100%;padding:10px 14px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;color:var(--text-primary);font-family:'DM Sans',sans-serif;margin-bottom:12px;box-sizing:border-box}
+.login-field:focus{outline:none;border-color:var(--claret)}
+.login-btn{width:100%;padding:11px;background:var(--claret);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:4px}
+.login-btn:hover{background:var(--claret-light)}
+.login-btn:disabled{background:var(--khaki);cursor:not-allowed}
+.login-error{font-size:12px;color:#8a1a1a;margin-top:12px;display:none}
 </style>
 </head>
 <body>
-<div class="shell">
+
+<!-- Login Screen -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <img class="login-logo" src="logo.png" alt="Apeiron International">
+    <div class="login-subtitle">Product Brain</div>
+    <div class="login-title">Sign in</div>
+    <div class="login-desc">Enter your Apeiron team credentials</div>
+    <input class="login-field" id="login-email" type="email" placeholder="Email address" autocomplete="email">
+    <input class="login-field" id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign in</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div class="shell" id="app-shell" style="display:none">
 
   <!-- Sidebar -->
   <nav class="sidebar">
@@ -247,10 +277,12 @@ input[type=file]{display:none}
     </div>
 
     <div class="sidebar-footer">
-      <div class="db-indicator">
-        <div class="db-dot" id="db-dot"></div>
-        <span id="db-label">Not configured</span>
+      <div class="db-indicator" style="margin-bottom:8px">
+        <div class="db-dot connected" id="db-dot"></div>
+        <span id="db-label">Connected</span>
       </div>
+      <div id="user-info" style="font-size:11px;color:var(--text-muted);margin-bottom:6px"></div>
+      <button class="btn btn-ghost btn-sm" onclick="doSignOut()" style="padding:4px 0;font-size:11px;color:var(--khaki)">Sign out</button>
     </div>
   </nav>
 
@@ -427,31 +459,23 @@ input[type=file]{display:none}
     <div id="page-config" class="page">
       <div class="page-header">
         <div class="page-title">Settings</div>
-        <div class="page-sub">Connection credentials — stored in your browser session only</div>
+        <div class="page-sub">Connection status and account information</div>
       </div>
       <div class="card">
         <div class="card-title">Supabase</div>
-        <div class="alert alert-info" style="margin-bottom:16px">Use the <strong>service role</strong> key — not the anon key. Found in Supabase → Settings → API.</div>
-        <div class="config-section">
-          <div class="config-label">Project URL</div>
-          <input class="config-input" id="cfg-url" placeholder="https://yourproject.supabase.co" oninput="saveConfig()">
-        </div>
-        <div class="config-section">
-          <div class="config-label">Service role key</div>
-          <input class="config-input" id="cfg-key" type="password" placeholder="eyJ..." oninput="saveConfig()">
-        </div>
+        <div class="alert alert-ok" style="margin-bottom:16px">Connected to <strong>kvsjgdknfkopjzqqqgml.supabase.co</strong> via secure anon key with Row Level Security.</div>
+        <div style="font-size:12px;color:var(--text-muted)">Database credentials are embedded in the application. Access is controlled via Supabase Auth and RLS policies.</div>
       </div>
       <div class="card">
         <div class="card-title">Anthropic API</div>
-        <div class="alert alert-info" style="margin-bottom:16px">Required for PDF extraction. Get your key from <strong>console.anthropic.com</strong></div>
-        <div class="config-section">
-          <div class="config-label">API key</div>
-          <input class="config-input" id="cfg-ant" type="password" placeholder="sk-ant-..." oninput="saveConfig()">
-        </div>
+        <div class="alert alert-ok" style="margin-bottom:16px">PDF extraction runs via a secure Supabase Edge Function. The API key is stored server-side and never exposed to the browser.</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn btn-primary" onclick="testConn()">Test connection</button>
-        <span id="conn-result" style="font-size:12px;color:var(--text-muted)"></span>
+      <div class="card">
+        <div class="card-title">Your account</div>
+        <div style="font-size:13px;color:var(--text-primary)" id="settings-user-info">Loading...</div>
+        <div style="margin-top:12px">
+          <button class="btn btn-outline btn-sm" onclick="doSignOut()">Sign out</button>
+        </div>
       </div>
     </div>
 
@@ -466,12 +490,16 @@ input[type=file]{display:none}
 </div>
 
 <script>
+const SUPABASE_URL='https://kvsjgdknfkopjzqqqgml.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2c2pnZGtuZmtvcGp6cXFxZ21sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTU4MTAsImV4cCI6MjA5MTE5MTgxMH0.nOjkR4_tBd77C7hNVbhCXhotcL2pOm0t9MV-fREihWk';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
 const S = {
-  cfg: {url:'',key:'',ant:''},
   products: [],
   selected: new Set(),
-  files: [],      // [{file, pdfB64, code, type, status, date, extracted, extractionState}]
-  activeIdx: -1
+  files: [],
+  activeIdx: -1,
+  session: null
 };
 
 const SECTIONS = [
@@ -515,78 +543,71 @@ function showPage(name) {
   if(name==='dashboard') loadDashboard();
 }
 
-function saveConfig(){
-  S.cfg.url=document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
-  S.cfg.key=document.getElementById('cfg-key').value.trim();
-  S.cfg.ant=document.getElementById('cfg-ant').value.trim();
-  try{localStorage.setItem('pb_cfg',JSON.stringify(S.cfg));}catch(e){}
-  updateDbDot();
-}
-
-function loadConfig(){
-  try{
-    const saved=JSON.parse(localStorage.getItem('pb_cfg'));
-    if(saved){
-      S.cfg.url=saved.url||'';S.cfg.key=saved.key||'';S.cfg.ant=saved.ant||'';
-      document.getElementById('cfg-url').value=S.cfg.url;
-      document.getElementById('cfg-key').value=S.cfg.key;
-      document.getElementById('cfg-ant').value=S.cfg.ant;
-    }
-  }catch(e){}
-}
-
-function updateDbDot(){
-  const dot=document.getElementById('db-dot');
-  const lbl=document.getElementById('db-label');
-  const ok=S.cfg.url&&S.cfg.key&&S.cfg.ant;
-  dot.className='db-dot'+(ok?' connected':'');
-  lbl.textContent=ok?'Connected':'Not configured';
-}
-
-async function sbFetch(table,opts={}){
-  if(!S.cfg.url||!S.cfg.key) throw new Error('Supabase not configured');
-  let url=`${S.cfg.url}/rest/v1/${table}?`;
-  if(opts.select) url+=`select=${encodeURIComponent(opts.select)}&`;
-  if(opts.eq) Object.entries(opts.eq).forEach(([k,v])=>url+=`${k}=eq.${encodeURIComponent(v)}&`);
-  if(opts.in) Object.entries(opts.in).forEach(([k,v])=>url+=`${k}=in.(${v.map(x=>encodeURIComponent(x)).join(',')})`+'&');
-  if(opts.order) url+=`order=${opts.order}&`;
-  if(opts.limit) url+=`limit=${opts.limit}&`;
-  const r=await fetch(url,{
-    method:opts.method||'GET',
-    headers:{'apikey':S.cfg.key,'Authorization':`Bearer ${S.cfg.key}`,'Content-Type':'application/json',
-      'Prefer':opts.upsert?'resolution=merge-duplicates,return=representation':'return=representation'},
-    body:opts.body?JSON.stringify(opts.body):undefined
+// --- Auth ---
+async function initAuth(){
+  const{data:{session}}=await sb.auth.getSession();
+  if(session){
+    S.session=session;
+    showApp(session);
+  }
+  sb.auth.onAuthStateChange((_event,session)=>{
+    S.session=session;
+    if(session) showApp(session);
+    else showLogin();
   });
-  const d=await r.json();
-  if(!r.ok) throw new Error(d.message||d.error||JSON.stringify(d));
-  return d;
+}
+
+function showApp(session){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app-shell').style.display='flex';
+  const email=session.user?.email||'';
+  document.getElementById('user-info').textContent=email;
+  const sui=document.getElementById('settings-user-info');
+  if(sui) sui.textContent=`Signed in as ${email}`;
+  loadDashboard();
+}
+
+function showLogin(){
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('app-shell').style.display='none';
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim();
+  const password=document.getElementById('login-password').value;
+  const errEl=document.getElementById('login-error');
+  errEl.style.display='none';
+  if(!email||!password){errEl.textContent='Please enter email and password.';errEl.style.display='block';return;}
+  document.getElementById('login-btn').disabled=true;
+  const{error}=await sb.auth.signInWithPassword({email,password});
+  document.getElementById('login-btn').disabled=false;
+  if(error){errEl.textContent=error.message;errEl.style.display='block';}
+}
+
+async function doSignOut(){
+  await sb.auth.signOut();
+  showLogin();
+}
+
+// --- Supabase data helpers ---
+async function sbFetch(table,opts={}){
+  let q=sb.from(table).select(opts.select||'*');
+  if(opts.eq) Object.entries(opts.eq).forEach(([k,v])=>q=q.eq(k,v));
+  if(opts.in) Object.entries(opts.in).forEach(([k,v])=>q=q.in(k,v));
+  if(opts.order){const[col,dir]=opts.order.split('.');q=q.order(col,{ascending:dir!=='desc'});}
+  if(opts.limit) q=q.limit(opts.limit);
+  const{data,error}=await q;
+  if(error) throw new Error(error.message);
+  return data;
 }
 
 async function sbInsert(table,body,upsert=false){
-  if(!S.cfg.url||!S.cfg.key) throw new Error('Supabase not configured');
-  const r=await fetch(`${S.cfg.url}/rest/v1/${table}`,{
-    method:'POST',
-    headers:{'apikey':S.cfg.key,'Authorization':`Bearer ${S.cfg.key}`,'Content-Type':'application/json',
-      'Prefer':upsert?'resolution=merge-duplicates,return=representation':'return=representation'},
-    body:JSON.stringify(body)
-  });
-  const d=await r.json();
-  if(!r.ok) throw new Error(d.message||d.error||JSON.stringify(d));
-  return d;
-}
-
-async function testConn(){
-  const el=document.getElementById('conn-result');
-  el.textContent='Testing...';
-  try{
-    await sbFetch('products',{select:'product_id',limit:1});
-    el.style.color='#276749';
-    el.textContent='✓ Connection successful';
-    updateDbDot();
-  }catch(e){
-    el.style.color='#8a1a1a';
-    el.textContent='✗ '+e.message;
-  }
+  const q=upsert
+    ?sb.from(table).upsert(body,{onConflict:Object.keys(body)[0]})
+    :sb.from(table).insert(body);
+  const{data,error}=await q.select();
+  if(error) throw new Error(error.message);
+  return data;
 }
 
 async function loadDashboard(){
@@ -725,78 +746,21 @@ dz.addEventListener('drop',e=>{
   }
 });
 
-const GITHUB_RAW='https://raw.githubusercontent.com/ApeironGroup/apeiron-skills/main';
-
-async function fetchSkillFile(path){
-  try{
-    const r=await fetch(`${GITHUB_RAW}/${path}`);
-    if(!r.ok) return null;
-    return await r.text();
-  }catch(e){ return null; }
-}
-
 async function extractSingleFile(idx){
   const entry=S.files[idx];
   if(!entry||!entry.pdfB64) throw new Error('PDF not ready');
   if(!entry.code) throw new Error('Enter a product code first');
-  if(!S.cfg.ant) throw new Error('Configure Anthropic API key in Settings first');
 
   entry.extractionState='extracting';
   renderQueue();
 
-  const [fieldGuide,carrierDict]=await Promise.all([
-    fetchSkillFile('product-list-updater/references/field-extraction-guide.md'),
-    fetchSkillFile('illustration-redaction/references/carrier_dictionary.md')
-  ]);
-  const skillContext=[
-    fieldGuide?`## FIELD EXTRACTION GUIDE\n${fieldGuide}`:'',
-    carrierDict?`## CARRIER DICTIONARY\n${carrierDict}`:''
-  ].filter(Boolean).join('\n\n---\n\n');
-
-  const prompt=`You are extracting structured insurance product data from a carrier brochure PDF for Apeiron International.
-
-Product code: ${entry.code}
-
-${skillContext?`Use this Apeiron extraction knowledge:\n\n${skillContext}\n\n---\n\n`:''}
-
-Return ONLY a valid JSON object. No markdown, no preamble.
-
-Extract these fields (use "TBC" if not found):
-product_name, company, plan_type, currency (array e.g. ["USD"]), premium_term, policy_term, ecv_scw_option,
-jurisdiction, regulatory_regime, governing_law, financial_strength_rating, capital_adequacy_ratio,
-ownership, entry_age_min (integer), entry_age_max (integer), entry_age_notes,
-eligible_countries, nftf_countries, us_canada_persons, non_med_limit,
-death_benefit, terminal_illness, non_lapse_guarantee, death_payout_options, breakeven_year,
-num_indices, num_indexed_accounts, net_premium_allocation, index_premium_allocation, index_performance_charges,
-segment_initiation_date, partial_withdrawal, free_partial_withdrawal, account_reallocation_frequency,
-auto_premium_spread, minimum_premium, backdating, top_up, premium_holiday,
-loan_features, policy_loan_interest, change_of_life_assured, contingent_life_insured,
-contingent_owner, policy_split, future_insurability, rop_rider, quit_smoking,
-incapacity_benefits, conversion_privilege, carrier_privilege,
-premium_charge, policy_fee, surrender_charge, free_withdrawal_charge, coi_charges,
-index_performance_charge, other_charges,
-guaranteed_rate, current_rate, minimum_rate, cumulative_guarantee, loyalty_rate,
-index_type, cap_rate, guaranteed_min_cap, floor_rate, participation_rate,
-min_participation_rate, multiplier, illustration_rate,
-tbc_fields (array of field names not found)`;
-
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':S.cfg.ant,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:4000,
-      messages:[{role:'user',content:[
-        {type:'document',source:{type:'base64',media_type:'application/pdf',data:entry.pdfB64}},
-        {type:'text',text:prompt}
-      ]}]
-    })
+  // Call Supabase Edge Function (Anthropic key is server-side)
+  const{data:fnData,error:fnError}=await sb.functions.invoke('extract',{
+    body:{pdf_base64:entry.pdfB64,product_code:entry.code}
   });
-  const j=await res.json();
-  if(j.error) throw new Error(j.error.message);
-  const raw=j.content.map(b=>b.text||'').join('');
-  const clean=raw.replace(/```json|```/g,'').trim();
-  const data=JSON.parse(clean);
+  if(fnError) throw new Error(fnError.message||'Edge Function call failed');
+  if(fnData.error) throw new Error(fnData.error);
+  const data=fnData;
   data.product_code=entry.code;
   data.product_type=entry.type;
   data.status=entry.status;
@@ -813,7 +777,7 @@ async function runExtraction(){
   if(!entry){alert('No file selected.');return;}
   if(!entry.pdfB64){alert('PDF still loading, please wait.');return;}
   if(!entry.code){alert('Enter a product code first.');return;}
-  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
+  if(!S.session){alert('Please sign in first.');return;}
 
   document.getElementById('extraction-block').style.display='block';
   document.getElementById('btn-extract').disabled=true;
@@ -841,7 +805,7 @@ async function runExtraction(){
 
 async function runExtractAll(){
   saveFormToActive();
-  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
+  if(!S.session){alert('Please sign in first.');return;}
   const pending=S.files.filter(f=>f.extractionState==='pending'&&f.pdfB64);
   if(!pending.length){alert('No pending files to extract. Ensure all have product codes.');return;}
   const missing=pending.filter(f=>!f.code);
@@ -1054,8 +1018,8 @@ function resetIngest(){
 }
 
 async function loadProducts(){
-  if(!S.cfg.url||!S.cfg.key){
-    document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not configured</div><div class="empty-sub">Add Supabase credentials in Settings</div></div>';
+  if(!S.session){
+    document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not signed in</div><div class="empty-sub">Please sign in to load products</div></div>';
     return;
   }
   document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-sub">Loading...</div></div>';
@@ -1159,8 +1123,8 @@ async function runComparison(){
 }
 
 async function loadPromos(){
-  if(!S.cfg.url||!S.cfg.key){
-    document.getElementById('promos-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not configured</div></div>';
+  if(!S.session){
+    document.getElementById('promos-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not signed in</div></div>';
     return;
   }
   try{
@@ -1184,9 +1148,7 @@ async function loadPromos(){
   }
 }
 
-loadConfig();
-updateDbDot();
-loadDashboard();
+initAuth();
 </script>
 </body>
 </html>
