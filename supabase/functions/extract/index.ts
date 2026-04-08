@@ -61,7 +61,7 @@ tbc_fields (array of field names not found)`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-3-haiku-20240307",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
           messages: [{ role: "user", content: [
             { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
@@ -79,7 +79,7 @@ tbc_fields (array of field names not found)`;
     // Process sequentially with a short pause between calls to avoid rate limits
     const results: Record<string, unknown>[] = [];
     for (let i = 0; i < pdfs.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 2000)); // 2s gap between calls
+      if (i > 0) await new Promise(r => setTimeout(r, 65000)); // 65s gap — stay within 10k TPM/min free tier
       results.push(await extractOnePdf(pdfs[i]));
     }
 
