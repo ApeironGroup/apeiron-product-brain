@@ -755,7 +755,8 @@ async function extractSingleFile(idx){
   renderQueue();
 
   // Call Supabase Edge Function (Anthropic key is server-side)
-  const session=S.session;
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session) throw new Error('Session expired — please sign in again');
   const fnRes=await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
     method:'POST',
     headers:{
