@@ -2,22 +2,11 @@ import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-const GITHUB_RAW = "https://raw.githubusercontent.com/ApeironGroup/apeiron-skills/main";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-async function fetchSkillFile(path: string): Promise<string | null> {
-  try {
-    const r = await fetch(`${GITHUB_RAW}/${path}`);
-    if (!r.ok) return null;
-    return await r.text();
-  } catch {
-    return null;
-  }
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -37,20 +26,9 @@ serve(async (req) => {
     const pdfs: string[] = Array.isArray(pdf_base64) ? pdf_base64 : [pdf_base64];
 
     // Fetch Apeiron skill extraction rules from GitHub
-    const [fieldGuide, carrierDict] = await Promise.all([
-      fetchSkillFile("product-list-updater/references/field-extraction-guide.md"),
-      fetchSkillFile("illustration-redaction/references/carrier_dictionary.md"),
-    ]);
-    const skillContext = [
-      fieldGuide ? `## FIELD EXTRACTION GUIDE\n${fieldGuide}` : "",
-      carrierDict ? `## CARRIER DICTIONARY\n${carrierDict}` : "",
-    ].filter(Boolean).join("\n\n---\n\n");
-
     const prompt = `You are extracting structured insurance product data from a carrier brochure PDF for Apeiron International.
 
 Product code: ${product_code}
-
-${skillContext ? `Use this Apeiron extraction knowledge:\n\n${skillContext}\n\n---\n\n` : ""}
 
 Return ONLY a valid JSON object. No markdown, no preamble.
 
@@ -83,7 +61,7 @@ tbc_fields (array of field names not found)`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-haiku-4-20250514",
           max_tokens: 4000,
           messages: [{ role: "user", content: [
             { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
