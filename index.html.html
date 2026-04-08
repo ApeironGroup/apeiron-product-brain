@@ -607,6 +607,16 @@ dz.addEventListener('drop',e=>{
   }
 });
 
+const GITHUB_RAW='https://raw.githubusercontent.com/ApeironGroup/apeiron-skills/main';
+
+async function fetchSkillFile(path){
+  try{
+    const r=await fetch(`${GITHUB_RAW}/${path}`);
+    if(!r.ok) return null;
+    return await r.text();
+  }catch(e){ return null; }
+}
+
 async function runExtraction(){
   if(!S.pdfB64){alert('Please select a PDF first.');return;}
   if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
@@ -616,14 +626,29 @@ async function runExtraction(){
   document.getElementById('btn-extract').disabled=true;
   document.getElementById('save-alert').style.display='none';
   document.getElementById('btn-save').style.display='none';
-  setProgress(20,'Sending PDF to extraction engine...');
+  setProgress(10,'Fetching extraction rules from GitHub...');
 
-  const prompt=`Extract structured insurance product data from this carrier brochure PDF for Apeiron International's product database.
+  const [fieldGuide,carrierDict]=await Promise.all([
+    fetchSkillFile('product-list-updater/references/field-extraction-guide.md'),
+    fetchSkillFile('illustration-redaction/references/carrier_dictionary.md')
+  ]);
+  const skillContext=[
+    fieldGuide?`## FIELD EXTRACTION GUIDE\n${fieldGuide}`:'',
+    carrierDict?`## CARRIER DICTIONARY\n${carrierDict}`:''
+  ].filter(Boolean).join('\n\n---\n\n');
 
-Return ONLY a valid JSON object. No markdown, no preamble. Product code is: ${code}
+  setProgress(20,fieldGuide?'Skill rules loaded from GitHub ✓':'Sending PDF to extraction engine...');
+
+  const prompt=`You are extracting structured insurance product data from a carrier brochure PDF for Apeiron International.
+
+Product code: ${code}
+
+${skillContext?`Use this Apeiron extraction knowledge:\n\n${skillContext}\n\n---\n\n`:''}
+
+Return ONLY a valid JSON object. No markdown, no preamble.
 
 Extract these fields (use "TBC" if not found):
-product_name, company, plan_type, currency (array), premium_term, policy_term, ecv_scw_option,
+product_name, company, plan_type, currency (array e.g. ["USD"]), premium_term, policy_term, ecv_scw_option,
 jurisdiction, regulatory_regime, governing_law, financial_strength_rating, capital_adequacy_ratio,
 ownership, entry_age_min (integer), entry_age_max (integer), entry_age_notes,
 eligible_countries, nftf_countries, us_canada_persons, non_med_limit,
