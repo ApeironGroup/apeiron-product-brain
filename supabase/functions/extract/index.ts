@@ -33,7 +33,7 @@ serve(async (req) => {
     if (!pdf_base64 || !product_code) {
       throw new Error("Missing pdf_base64 or product_code");
     }
-    // Accept single PDF or array of PDFs
+    // Accept single PDF or array of PDFs — process sequentially to stay within rate limits
     const pdfs: string[] = Array.isArray(pdf_base64) ? pdf_base64 : [pdf_base64];
 
     // Fetch Apeiron skill extraction rules from GitHub
@@ -73,37 +73,52 @@ index_type, cap_rate, guaranteed_min_cap, floor_rate, participation_rate,
 min_participation_rate, multiplier, illustration_rate,
 tbc_fields (array of field names not found)`;
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4000,
-        messages: [{
-          role: "user",
-          content: [
-            ...pdfs.map(b64 => ({
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: b64 }
-            })),
+    // Extract each PDF sequentially, then merge — non-TBC values win over TBC
+    async function extractOnePdf(b64: string): Promise<Record<string, unknown>> {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{ role: "user", content: [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
             { type: "text", text: prompt },
-          ],
-        }],
-      }),
-    });
+          ]}],
+        }),
+      });
+      const j = await res.json();
+      if (j.error) throw new Error(j.error.message);
+      const raw = j.content.map((b: { text?: string }) => b.text || "").join("");
+      return JSON.parse(raw.replace(/```json|```/g, "").trim());
+    }
 
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message);
+    // Process sequentially with a short pause between calls to avoid rate limits
+    const results: Record<string, unknown>[] = [];
+    for (let i = 0; i < pdfs.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 2000)); // 2s gap between calls
+      results.push(await extractOnePdf(pdfs[i]));
+    }
 
-    const raw = j.content.map((b: { text?: string }) => b.text || "").join("");
-    const clean = raw.replace(/```json|```/g, "").trim();
-    const data = JSON.parse(clean);
+    // Merge: first result is base, subsequent results fill in TBC/missing fields
+    const merged: Record<string, unknown> = { ...results[0] };
+    for (let i = 1; i < results.length; i++) {
+      for (const [key, val] of Object.entries(results[i])) {
+        if (key === "tbc_fields") continue;
+        const existing = merged[key];
+        const isTbc = !existing || existing === "TBC" || (Array.isArray(existing) && existing.length === 0);
+        if (isTbc && val && val !== "TBC") merged[key] = val;
+      }
+    }
+    // Rebuild tbc_fields from merged result
+    const allFields = Object.keys(results[0]).filter(k => k !== "tbc_fields");
+    merged["tbc_fields"] = allFields.filter(k => !merged[k] || merged[k] === "TBC");
 
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify(merged), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
