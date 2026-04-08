@@ -61,7 +61,7 @@ tbc_fields (array of field names not found)`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-3-5-haiku-20241022",
+          model: "claude-3-haiku-20240307",
           max_tokens: 4000,
           messages: [{ role: "user", content: [
             { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
@@ -70,7 +70,8 @@ tbc_fields (array of field names not found)`;
         }),
       });
       const j = await res.json();
-      if (j.error) throw new Error(j.error.message);
+      if (j.error) throw new Error(`Anthropic error: ${JSON.stringify(j.error)}`);
+      if (!j.content) throw new Error(`Unexpected response: ${JSON.stringify(j)}`);
       const raw = j.content.map((b: { text?: string }) => b.text || "").join("");
       return JSON.parse(raw.replace(/```json|```/g, "").trim());
     }
