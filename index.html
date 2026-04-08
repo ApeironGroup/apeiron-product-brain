@@ -353,9 +353,11 @@ input[type=file]{display:none}
       </div>
 
       <div id="file-queue-container"></div>
+      <div id="countdown-msg" style="display:none;font-size:12px;color:var(--khaki);padding:4px 2px;margin-top:-6px;margin-bottom:8px"></div>
 
       <div id="ingest-form" style="display:none">
         <div class="section-label">Product identity</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Fill in the product code below — extraction runs automatically as each PDF is read.</div>
         <div class="field-row">
           <div class="field" style="max-width:200px">
             <label>Product code *</label>
@@ -386,7 +388,7 @@ input[type=file]{display:none}
         </div>
 
         <div id="extraction-block" style="display:none">
-          <div class="section-label">Extraction</div>
+          <div class="section-label">Extraction results</div>
           <div class="card" style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span style="font-size:13px;font-weight:500;color:var(--oxford)" id="ext-status-text">Extracting...</span>
@@ -403,7 +405,6 @@ input[type=file]{display:none}
         <div id="save-alert" style="display:none"></div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-primary" id="btn-extract" onclick="runExtraction()">Extract from PDF</button>
           <button class="btn btn-outline" id="btn-save" onclick="saveProduct()" style="display:none">Save to database</button>
           <button class="btn btn-ghost" onclick="resetIngest()">Reset</button>
         </div>
@@ -505,11 +506,18 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const S = {
   products: [],
   selected: new Set(),
-  files: [],        // [{file, pdfB64, loadState}] — all docs for the current product
+  // Each file: {file, pdfB64, loadState, extractState, extractedData, errorMsg}
+  // loadState: 'loading' | 'ready'
+  // extractState: 'pending' | 'queued' | 'extracting' | 'extracted' | 'error'
+  files: [],
   product: {        // single product being ingested
     code:'', type:'IUL', status:'Active', date:new Date().toISOString().split('T')[0],
     extracted:null, extractionState:'pending'
   },
+  extractQueue: [],    // indices of S.files waiting to extract
+  extracting: false,   // currently running an extraction call
+  lastExtractMs: 0,    // timestamp when last extraction started
+  countdownTimer: null,
   session: null
 };
 
@@ -641,9 +649,16 @@ function handleFiles(e){
   const fileList=Array.from(e.target.files||[]).filter(f=>f.type==='application/pdf');
   if(!fileList.length) return;
   fileList.forEach(f=>{
-    const entry={file:f,pdfB64:null,loadState:'loading'};
+    const entry={file:f,pdfB64:null,loadState:'loading',extractState:'pending',extractedData:null,errorMsg:''};
     const reader=new FileReader();
-    reader.onload=ev=>{entry.pdfB64=ev.target.result.split(',')[1];entry.loadState='ready';renderQueue();};
+    reader.onload=ev=>{
+      entry.pdfB64=ev.target.result.split(',')[1];
+      entry.loadState='ready';
+      entry.extractState='queued';
+      S.extractQueue.push(S.files.indexOf(entry));
+      renderQueue();
+      processExtractionQueue();
+    };
     reader.readAsDataURL(f);
     S.files.push(entry);
   });
@@ -657,14 +672,34 @@ function renderQueue(){
   let html='<div class="file-queue">';
   S.files.forEach((f,i)=>{
     const sizeMB=(f.file.size/1024/1024).toFixed(2);
-    const ready=f.loadState==='ready';
+    let badge,icon,detail='';
+    if(f.extractState==='extracted'){
+      badge='<span class="badge badge-ok" style="font-size:10px;padding:2px 7px">✓ Extracted</span>';
+      icon='✅';
+    } else if(f.extractState==='extracting'){
+      badge='<span class="badge badge-info" style="font-size:10px;padding:2px 7px">Extracting…</span>';
+      icon='⏳';
+    } else if(f.extractState==='error'){
+      badge=`<span class="badge badge-warn" style="font-size:10px;padding:2px 7px;cursor:help" title="${f.errorMsg||''}">⚠ Error</span>`;
+      icon='📄';
+    } else if(f.extractState==='queued'){
+      badge='<span class="badge badge-info" style="font-size:10px;padding:2px 7px;background:#f0f4fa;color:#6b7f9e">Queued</span>';
+      icon='📄';
+    } else if(f.loadState==='loading'){
+      badge='<span class="badge badge-info" style="font-size:10px;padding:2px 7px">Reading…</span>';
+      icon='📄';
+      detail=' · <em>reading file…</em>';
+    } else {
+      badge='<span class="badge badge-info" style="font-size:10px;padding:2px 7px">Ready</span>';
+      icon='📄';
+    }
     html+=`<div class="file-queue-item">
-      <div class="fq-icon">📄</div>
+      <div class="fq-icon">${icon}</div>
       <div class="fq-info">
         <div class="fq-name">${f.file.name}</div>
-        <div class="fq-size">${sizeMB} MB${ready?'':' · <em>reading…</em>'}</div>
+        <div class="fq-size">${sizeMB} MB${detail}</div>
       </div>
-      <div class="fq-status"><span class="badge ${ready?'badge-ok':'badge-info'}" style="font-size:10px;padding:2px 7px">${ready?'Ready':'Loading'}</span></div>
+      <div class="fq-status">${badge}</div>
       <button class="fq-remove" onclick="removeFile(${i})" title="Remove">×</button>
     </div>`;
   });
@@ -674,8 +709,20 @@ function renderQueue(){
 }
 
 function removeFile(idx){
+  // Remove from extract queue if present
+  S.extractQueue=S.extractQueue.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
   S.files.splice(idx,1);
   if(!S.files.length){resetIngest();return;}
+  // If all extracted files removed, hide extraction block
+  if(!S.files.some(f=>f.extractState==='extracted')){
+    document.getElementById('extraction-block').style.display='none';
+    document.getElementById('btn-save').style.display='none';
+    S.product.extracted=null;
+    S.product.extractionState='pending';
+  } else {
+    mergeAllExtracted();
+    showExtractionResult();
+  }
   renderQueue();
 }
 
@@ -684,15 +731,22 @@ function showExtractionResult(){
   if(!d) return;
   document.getElementById('extraction-block').style.display='block';
   document.getElementById('prog').style.width='100%';
-  document.getElementById('ext-status-text').textContent='Extraction complete — review and edit fields below before saving';
-  document.getElementById('ext-badge').className='badge badge-ok';
-  document.getElementById('ext-badge').textContent='Complete';
+  const doneCount=S.files.filter(f=>f.extractState==='extracted').length;
+  const totalCount=S.files.length;
+  const moreRunning=S.extractQueue.length>0||S.extracting;
+  document.getElementById('ext-status-text').textContent=
+    moreRunning
+      ? `${doneCount} of ${totalCount} PDFs extracted — more processing…`
+      : 'Extraction complete — review and edit fields below before saving';
+  document.getElementById('ext-badge').className=moreRunning?'badge badge-info':'badge badge-ok';
+  document.getElementById('ext-badge').textContent=moreRunning?'Processing':'Complete';
   const tbc=(d.tbc_fields||[]).length;
   const found=65-tbc;
   document.getElementById('ext-badges').innerHTML=
     `<span class="badge badge-ok">✓ ${found} fields extracted</span>`+
     (tbc>0?`<span class="badge badge-warn">⚠ ${tbc} TBC</span>`:'')+
-    `<span class="badge badge-info">${d.company||'Unknown carrier'}</span>`;
+    `<span class="badge badge-info">${d.company||'Unknown carrier'}</span>`+
+    (doneCount>1?`<span class="badge badge-info">Merged from ${doneCount} PDFs</span>`:'');
 
   // All sections + fields for editable form
   const ALL_SECTIONS=[
@@ -778,52 +832,147 @@ dz.addEventListener('drop',e=>{
   }
 });
 
-async function runExtraction(){
-  S.product.code=document.getElementById('f-code').value.trim();
-  S.product.type=document.getElementById('f-type').value;
-  S.product.status=document.getElementById('f-status').value;
-  S.product.date=document.getElementById('f-date').value;
+const RATE_LIMIT_MS = 65000; // 65s between calls (10k TPM free tier)
 
-  if(!S.product.code){alert('Enter a product code first.');return;}
-  if(!S.session){alert('Please sign in first.');return;}
-  const ready=S.files.filter(f=>f.pdfB64);
-  if(!ready.length){alert('No PDFs ready yet — please wait for them to finish loading.');return;}
+async function processExtractionQueue(){
+  if(S.extracting || S.extractQueue.length===0) return;
 
-  S.product.extractionState='extracting';
+  // Check if we need to wait for rate limit
+  if(S.lastExtractMs>0){
+    const elapsed=Date.now()-S.lastExtractMs;
+    if(elapsed<RATE_LIMIT_MS){
+      const wait=RATE_LIMIT_MS-elapsed;
+      startCountdown(wait);
+      return; // countdown will call processExtractionQueue again
+    }
+  }
+
+  // Get next file index
+  const idx=S.extractQueue.shift();
+  const entry=S.files[idx];
+  if(!entry||!entry.pdfB64){processExtractionQueue();return;} // skip removed/bad file
+
+  S.extracting=true;
+  S.lastExtractMs=Date.now();
+  entry.extractState='extracting';
+  stopCountdown();
+  renderQueue();
+
+  // Show extraction block with progress
   document.getElementById('extraction-block').style.display='block';
-  document.getElementById('btn-extract').disabled=true;
   document.getElementById('save-alert').style.display='none';
-  document.getElementById('btn-save').style.display='none';
-  setProgress(20,`Sending ${ready.length} document${ready.length>1?'s':''} to AI...`);
+  const extractedCount=S.files.filter(f=>f.extractState==='extracted').length;
+  const totalQueued=S.files.length;
+  setProgress(30,`Extracting "${entry.file.name}" (${extractedCount+1} of ${totalQueued})…`);
+  document.getElementById('ext-badge').className='badge badge-info';
+  document.getElementById('ext-badge').textContent='Processing';
 
+  const code=document.getElementById('f-code').value.trim()||'UNKNOWN';
   try{
     const fnRes=await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`},
-      body:JSON.stringify({
-        pdf_base64:ready.map(f=>f.pdfB64),
-        product_code:S.product.code
-      })
+      body:JSON.stringify({pdf_base64:entry.pdfB64,product_code:code})
     });
     const fnBody=await fnRes.json();
     if(!fnRes.ok) throw new Error(fnBody.error||`Edge Function error ${fnRes.status}: ${JSON.stringify(fnBody)}`);
-    const data=fnBody;
-    data.product_code=S.product.code;
-    data.product_type=S.product.type;
-    data.status=S.product.status;
-    data.effective_date=S.product.date;
-    S.product.extracted=data;
-    S.product.extractionState='extracted';
-    setProgress(100,'Extraction complete');
+    entry.extractedData=fnBody;
+    entry.extractState='extracted';
+    mergeAllExtracted();
+    setProgress(100,'');
     showExtractionResult();
   }catch(e){
-    S.product.extractionState='error';
-    setProgress(0,'');
-    document.getElementById('ext-badge').className='badge badge-warn';
-    document.getElementById('ext-badge').textContent='Error';
-    document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
+    entry.extractState='error';
+    entry.errorMsg=e.message;
+    const errBl=document.getElementById('extraction-block');
+    if(S.files.filter(f=>f.extractState==='extracted').length===0){
+      // No successful extractions yet — show error in block
+      document.getElementById('ext-badge').className='badge badge-warn';
+      document.getElementById('ext-badge').textContent='Error';
+      document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
+    }
+    // If other files extracted OK, just mark this file as error but keep showing results
   }
-  document.getElementById('btn-extract').disabled=false;
+
+  S.extracting=false;
+  renderQueue();
+
+  // Process next file if any
+  if(S.extractQueue.length>0){
+    startCountdown(RATE_LIMIT_MS);
+  }
+}
+
+function startCountdown(ms){
+  stopCountdown();
+  const end=Date.now()+ms;
+  // Mark waiting files
+  S.extractQueue.forEach(idx=>{if(S.files[idx]) S.files[idx].extractState='queued';});
+  renderQueue();
+  function tick(){
+    const remaining=Math.ceil((end-Date.now())/1000);
+    if(remaining<=0){
+      updateCountdownDisplay(0);
+      processExtractionQueue();
+      return;
+    }
+    updateCountdownDisplay(remaining);
+    S.countdownTimer=setTimeout(tick,1000);
+  }
+  tick();
+}
+
+function stopCountdown(){
+  if(S.countdownTimer){clearTimeout(S.countdownTimer);S.countdownTimer=null;}
+  updateCountdownDisplay(0);
+}
+
+function updateCountdownDisplay(secs){
+  const el=document.getElementById('countdown-msg');
+  if(!el) return;
+  if(secs>0){
+    el.style.display='block';
+    el.textContent=`⏱ Next PDF extracting in ${secs}s… (rate limit gap)`;
+  } else {
+    el.style.display='none';
+  }
+}
+
+function mergeAllExtracted(){
+  const done=S.files.filter(f=>f.extractedData);
+  if(!done.length) return;
+
+  // Build fresh merge from all extraction results
+  const merged={...done[0].extractedData};
+  for(let i=1;i<done.length;i++){
+    for(const[key,val] of Object.entries(done[i].extractedData)){
+      if(key==='tbc_fields') continue;
+      const existing=merged[key];
+      const isTbc=!existing||existing==='TBC'||(Array.isArray(existing)&&existing.length===0);
+      if(isTbc&&val&&val!=='TBC') merged[key]=val;
+    }
+  }
+
+  // Preserve any user-edited (non-TBC) values from previous S.product.extracted
+  if(S.product.extracted){
+    for(const[key,val] of Object.entries(S.product.extracted)){
+      if(key==='tbc_fields') continue;
+      if(val&&val!=='TBC') merged[key]=val; // user edits win
+    }
+  }
+
+  // Rebuild tbc_fields
+  const allFields=Object.keys(merged).filter(k=>k!=='tbc_fields');
+  merged['tbc_fields']=allFields.filter(k=>!merged[k]||merged[k]==='TBC');
+
+  // Stamp product identity
+  merged.product_code=document.getElementById('f-code').value.trim();
+  merged.product_type=document.getElementById('f-type').value;
+  merged.status=document.getElementById('f-status').value;
+  merged.effective_date=document.getElementById('f-date').value;
+
+  S.product.extracted=merged;
+  S.product.extractionState='extracted';
 }
 
 function setProgress(pct,text){
@@ -903,16 +1052,20 @@ async function saveProduct(){
 }
 
 function resetIngest(){
+  stopCountdown();
   S.files=[];
+  S.extractQueue=[];
+  S.extracting=false;
+  S.lastExtractMs=0;
   S.product={code:'',type:'IUL',status:'Active',date:new Date().toISOString().split('T')[0],extracted:null,extractionState:'pending'};
   document.getElementById('pdf-input').value='';
   document.getElementById('file-queue-container').innerHTML='';
+  document.getElementById('countdown-msg').style.display='none';
   document.getElementById('ingest-form').style.display='none';
   document.getElementById('extraction-block').style.display='none';
   document.getElementById('ext-summary').style.display='none';
   document.getElementById('save-alert').style.display='none';
   document.getElementById('btn-save').style.display='none';
-  document.getElementById('btn-extract').disabled=false;
   document.getElementById('f-code').value='';
   document.getElementById('prog').style.width='0%';
   dz.innerHTML=`<input type="file" id="pdf-input" accept=".pdf" multiple onchange="handleFiles(event)"><div class="upload-zone-icon">↑</div><div class="upload-zone-title">Drop carrier brochure PDFs here</div><div class="upload-zone-sub">or click to browse · multiple files supported · any carrier · any jurisdiction</div>`;
