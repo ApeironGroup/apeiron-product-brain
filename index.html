@@ -394,9 +394,7 @@ input[type=file]{display:none}
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-extract" onclick="runExtraction()">Extract from PDF</button>
-          <button class="btn btn-primary" id="btn-extract-all" onclick="runExtractAll()" style="display:none">Extract All</button>
           <button class="btn btn-outline" id="btn-save" onclick="saveProduct()" style="display:none">Save to database</button>
-          <button class="btn btn-outline" id="btn-save-all" onclick="saveAllProducts()" style="display:none">Save All</button>
           <button class="btn btn-ghost" onclick="resetIngest()">Reset</button>
         </div>
       </div>
@@ -497,8 +495,11 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const S = {
   products: [],
   selected: new Set(),
-  files: [],
-  activeIdx: -1,
+  files: [],        // [{file, pdfB64, loadState}] — all docs for the current product
+  product: {        // single product being ingested
+    code:'', type:'IUL', status:'Active', date:new Date().toISOString().split('T')[0],
+    extracted:null, extractionState:'pending'
+  },
   session: null
 };
 
@@ -630,17 +631,14 @@ function handleFiles(e){
   const fileList=Array.from(e.target.files||[]).filter(f=>f.type==='application/pdf');
   if(!fileList.length) return;
   fileList.forEach(f=>{
-    const entry={file:f,pdfB64:null,code:'',type:'IUL',status:'Active',date:new Date().toISOString().split('T')[0],extracted:null,extractionState:'pending'};
+    const entry={file:f,pdfB64:null,loadState:'loading'};
     const reader=new FileReader();
-    reader.onload=ev=>{entry.pdfB64=ev.target.result.split(',')[1];renderQueue();};
+    reader.onload=ev=>{entry.pdfB64=ev.target.result.split(',')[1];entry.loadState='ready';renderQueue();};
     reader.readAsDataURL(f);
     S.files.push(entry);
   });
-  if(S.activeIdx<0) S.activeIdx=0;
   renderQueue();
-  selectFile(S.activeIdx);
   document.getElementById('ingest-form').style.display='block';
-  updateBatchButtons();
 }
 
 function renderQueue(){
@@ -649,14 +647,15 @@ function renderQueue(){
   let html='<div class="file-queue">';
   S.files.forEach((f,i)=>{
     const sizeMB=(f.file.size/1024/1024).toFixed(2);
-    const stClass=f.extractionState==='extracted'?'badge-ok':f.extractionState==='saved'?'badge-active':f.extractionState==='error'?'badge-warn':'badge-info';
-    const stLabel=f.extractionState==='extracted'?'Extracted':f.extractionState==='saved'?'Saved':f.extractionState==='extracting'?'Extracting...':f.extractionState==='error'?'Error':'Pending';
-    const ready=f.pdfB64?'':'<span style="font-size:10px;color:var(--text-muted);margin-left:4px">reading...</span>';
-    html+=`<div class="file-queue-item${i===S.activeIdx?' active':''}" onclick="selectFile(${i})">
+    const ready=f.loadState==='ready';
+    html+=`<div class="file-queue-item">
       <div class="fq-icon">📄</div>
-      <div class="fq-info"><div class="fq-name">${f.file.name}${ready}</div><div class="fq-size">${sizeMB} MB${f.code?' · '+f.code:''}</div></div>
-      <div class="fq-status"><span class="badge ${stClass}" style="font-size:10px;padding:2px 7px">${stLabel}</span></div>
-      <button class="fq-remove" onclick="event.stopPropagation();removeFile(${i})" title="Remove">×</button>
+      <div class="fq-info">
+        <div class="fq-name">${f.file.name}</div>
+        <div class="fq-size">${sizeMB} MB${ready?'':' · <em>reading…</em>'}</div>
+      </div>
+      <div class="fq-status"><span class="badge ${ready?'badge-ok':'badge-info'}" style="font-size:10px;padding:2px 7px">${ready?'Ready':'Loading'}</span></div>
+      <button class="fq-remove" onclick="removeFile(${i})" title="Remove">×</button>
     </div>`;
   });
   html+='<button class="fq-add-more" onclick="document.getElementById(\'pdf-input\').click()">+ Add more PDFs</button>';
@@ -664,53 +663,20 @@ function renderQueue(){
   c.innerHTML=html;
 }
 
-function selectFile(idx){
-  if(idx<0||idx>=S.files.length) return;
-  // save current form values to previous active file
-  saveFormToActive();
-  S.activeIdx=idx;
-  const f=S.files[idx];
-  document.getElementById('f-code').value=f.code;
-  document.getElementById('f-type').value=f.type;
-  document.getElementById('f-status').value=f.status;
-  document.getElementById('f-date').value=f.date;
-  // update extraction display
-  if(f.extracted){
-    showExtractionResult(f);
-  } else {
-    document.getElementById('extraction-block').style.display='none';
-    document.getElementById('ext-summary').style.display='none';
-    document.getElementById('btn-save').style.display='none';
-  }
-  document.getElementById('save-alert').style.display='none';
-  renderQueue();
-  updateBatchButtons();
-}
-
-function saveFormToActive(){
-  if(S.activeIdx<0||S.activeIdx>=S.files.length) return;
-  const f=S.files[S.activeIdx];
-  f.code=document.getElementById('f-code').value.trim();
-  f.type=document.getElementById('f-type').value;
-  f.status=document.getElementById('f-status').value;
-  f.date=document.getElementById('f-date').value;
-}
-
 function removeFile(idx){
   S.files.splice(idx,1);
   if(!S.files.length){resetIngest();return;}
-  if(S.activeIdx>=S.files.length) S.activeIdx=S.files.length-1;
-  else if(S.activeIdx>idx) S.activeIdx--;
-  selectFile(S.activeIdx);
+  renderQueue();
 }
 
-function showExtractionResult(f){
+function showExtractionResult(){
+  const d=S.product.extracted;
+  if(!d) return;
   document.getElementById('extraction-block').style.display='block';
   document.getElementById('prog').style.width='100%';
   document.getElementById('ext-status-text').textContent='Extraction complete';
   document.getElementById('ext-badge').className='badge badge-ok';
   document.getElementById('ext-badge').textContent='Complete';
-  const d=f.extracted;
   const tbc=(d.tbc_fields||[]).length;
   const found=65-tbc;
   document.getElementById('ext-badges').innerHTML=
@@ -728,13 +694,6 @@ function showExtractionResult(f){
   document.getElementById('btn-save').style.display='inline-flex';
 }
 
-function updateBatchButtons(){
-  const multi=S.files.length>1;
-  document.getElementById('btn-extract-all').style.display=multi?'inline-flex':'none';
-  const anyExtracted=S.files.some(f=>f.extracted&&f.extractionState==='extracted');
-  document.getElementById('btn-save-all').style.display=(multi&&anyExtracted)?'inline-flex':'none';
-}
-
 const dz=document.getElementById('drop-zone');
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
 dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
@@ -746,100 +705,52 @@ dz.addEventListener('drop',e=>{
   }
 });
 
-async function extractSingleFile(idx){
-  const entry=S.files[idx];
-  if(!entry||!entry.pdfB64) throw new Error('PDF not ready');
-  if(!entry.code) throw new Error('Enter a product code first');
-
-  entry.extractionState='extracting';
-  renderQueue();
-
-  // Call Supabase Edge Function (Anthropic key is server-side)
-  const fnRes=await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${SUPABASE_ANON_KEY}`
-    },
-    body:JSON.stringify({pdf_base64:entry.pdfB64,product_code:entry.code})
-  });
-  const fnBody=await fnRes.json();
-  if(!fnRes.ok) throw new Error(fnBody.error||`Edge Function error ${fnRes.status}: ${JSON.stringify(fnBody)}`);
-  const data=fnBody;
-  data.product_code=entry.code;
-  data.product_type=entry.type;
-  data.status=entry.status;
-  data.effective_date=entry.date;
-  entry.extracted=data;
-  entry.extractionState='extracted';
-  renderQueue();
-  return data;
-}
-
 async function runExtraction(){
-  saveFormToActive();
-  const entry=S.files[S.activeIdx];
-  if(!entry){alert('No file selected.');return;}
-  if(!entry.pdfB64){alert('PDF still loading, please wait.');return;}
-  if(!entry.code){alert('Enter a product code first.');return;}
-  if(!S.session){alert('Please sign in first.');return;}
+  S.product.code=document.getElementById('f-code').value.trim();
+  S.product.type=document.getElementById('f-type').value;
+  S.product.status=document.getElementById('f-status').value;
+  S.product.date=document.getElementById('f-date').value;
 
+  if(!S.product.code){alert('Enter a product code first.');return;}
+  if(!S.session){alert('Please sign in first.');return;}
+  const ready=S.files.filter(f=>f.pdfB64);
+  if(!ready.length){alert('No PDFs ready yet — please wait for them to finish loading.');return;}
+
+  S.product.extractionState='extracting';
   document.getElementById('extraction-block').style.display='block';
   document.getElementById('btn-extract').disabled=true;
   document.getElementById('save-alert').style.display='none';
   document.getElementById('btn-save').style.display='none';
-  setProgress(10,'Fetching extraction rules...');
+  setProgress(20,`Sending ${ready.length} document${ready.length>1?'s':''} to AI...`);
 
   try{
-    setProgress(50,'AI reading brochure...');
-    await extractSingleFile(S.activeIdx);
+    const fnRes=await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`},
+      body:JSON.stringify({
+        pdf_base64:ready.map(f=>f.pdfB64),
+        product_code:S.product.code
+      })
+    });
+    const fnBody=await fnRes.json();
+    if(!fnRes.ok) throw new Error(fnBody.error||`Edge Function error ${fnRes.status}: ${JSON.stringify(fnBody)}`);
+    const data=fnBody;
+    data.product_code=S.product.code;
+    data.product_type=S.product.type;
+    data.status=S.product.status;
+    data.effective_date=S.product.date;
+    S.product.extracted=data;
+    S.product.extractionState='extracted';
     setProgress(100,'Extraction complete');
-    showExtractionResult(entry);
-    document.getElementById('btn-extract').disabled=false;
-    updateBatchButtons();
+    showExtractionResult();
   }catch(e){
-    entry.extractionState='error';
-    renderQueue();
+    S.product.extractionState='error';
     setProgress(0,'');
     document.getElementById('ext-badge').className='badge badge-warn';
     document.getElementById('ext-badge').textContent='Error';
     document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
-    document.getElementById('btn-extract').disabled=false;
   }
-}
-
-async function runExtractAll(){
-  saveFormToActive();
-  if(!S.session){alert('Please sign in first.');return;}
-  const pending=S.files.filter(f=>f.extractionState==='pending'&&f.pdfB64);
-  if(!pending.length){alert('No pending files to extract. Ensure all have product codes.');return;}
-  const missing=pending.filter(f=>!f.code);
-  if(missing.length){alert(`${missing.length} file(s) missing product codes. Please fill them in first.`);return;}
-
-  document.getElementById('btn-extract-all').disabled=true;
-  document.getElementById('btn-extract').disabled=true;
-  document.getElementById('extraction-block').style.display='block';
-
-  let done=0;
-  for(let i=0;i<S.files.length;i++){
-    const f=S.files[i];
-    if(f.extractionState!=='pending'||!f.pdfB64||!f.code) continue;
-    S.activeIdx=i;
-    selectFile(i);
-    setProgress(Math.round((done/pending.length)*100),`Extracting ${done+1} of ${pending.length}: ${f.file.name}...`);
-    try{
-      await extractSingleFile(i);
-      showExtractionResult(f);
-    }catch(e){
-      f.extractionState='error';
-      renderQueue();
-    }
-    done++;
-  }
-  setProgress(100,`All done — ${done} file(s) extracted`);
-  document.getElementById('btn-extract-all').disabled=false;
   document.getElementById('btn-extract').disabled=false;
-  updateBatchButtons();
 }
 
 function setProgress(pct,text){
@@ -848,15 +759,13 @@ function setProgress(pct,text){
 }
 
 async function saveProduct(){
-  saveFormToActive();
-  const entry=S.files[S.activeIdx];
-  if(!entry||!entry.extracted) return;
+  if(!S.product.extracted) return;
   const el=document.getElementById('save-alert');
   el.style.display='block';
   el.className='alert alert-info';
   el.textContent='Saving to database...';
   document.getElementById('btn-save').disabled=true;
-  const d=entry.extracted;
+  const d=S.product.extracted;
   try{
     const cc=d.product_code.split('-')[0].toUpperCase();
     await sbInsert('carriers',{
@@ -908,16 +817,11 @@ async function saveProduct(){
       participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
       source:'Extracted via Product Brain'
     },false);
-    entry.extractionState='saved';
+    S.product.extractionState='saved';
     el.className='alert alert-ok';
     el.textContent=`✓ ${d.product_name} saved successfully.`;
     document.getElementById('btn-save').disabled=false;
-    renderQueue();
-    updateBatchButtons();
-    // If all files saved, navigate to browse after delay
-    if(S.files.every(f=>f.extractionState==='saved')){
-      setTimeout(()=>{resetIngest();showPage('browse');},1800);
-    }
+    setTimeout(()=>{resetIngest();showPage('browse');},1800);
   }catch(e){
     el.className='alert alert-err';
     el.textContent='Save failed: '+e.message;
@@ -925,87 +829,9 @@ async function saveProduct(){
   }
 }
 
-async function saveAllProducts(){
-  saveFormToActive();
-  const toSave=S.files.filter(f=>f.extracted&&f.extractionState==='extracted');
-  if(!toSave.length){alert('No extracted files to save.');return;}
-  document.getElementById('btn-save-all').disabled=true;
-  const el=document.getElementById('save-alert');
-  let saved=0;
-  for(let i=0;i<S.files.length;i++){
-    const f=S.files[i];
-    if(!f.extracted||f.extractionState!=='extracted') continue;
-    S.activeIdx=i;
-    selectFile(i);
-    el.style.display='block';
-    el.className='alert alert-info';
-    el.textContent=`Saving ${saved+1} of ${toSave.length}: ${f.extracted.product_name||f.file.name}...`;
-    try{
-      const d=f.extracted;
-      const cc=d.product_code.split('-')[0].toUpperCase();
-      await sbInsert('carriers',{
-        carrier_code:cc,name:d.company||'',short_name:(d.company||'').split(' ')[0],
-        jurisdiction:d.jurisdiction?[d.jurisdiction]:[],regulatory_regime:d.regulatory_regime||null,
-        governing_law:d.governing_law||null,financial_strength_rating:d.financial_strength_rating||null,
-        capital_adequacy_ratio:d.capital_adequacy_ratio||null,
-        regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
-        status:'Active'
-      },true);
-      const cars=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
-      const cid=cars[0].carrier_id;
-      await sbInsert('products',{
-        carrier_id:cid,product_code:d.product_code,product_name:d.product_name||'',
-        product_type:d.product_type||'IUL',status:d.status||'Active',
-        plan_type:d.plan_type||null,currency:d.currency||null,
-        premium_term:d.premium_term||null,policy_term:d.policy_term||null,
-        ecv_scw_option:d.ecv_scw_option||null,ownership:d.ownership||null,
-        entry_age_min:d.entry_age_min||null,entry_age_max:d.entry_age_max||null,
-        entry_age_notes:d.entry_age_notes||null,eligible_countries:d.eligible_countries||null,
-        nftf_countries:d.nftf_countries||null,us_canada_persons:d.us_canada_persons||null,
-        non_med_limit:d.non_med_limit||null,death_benefit:d.death_benefit||null,
-        terminal_illness:d.terminal_illness||null,non_lapse_guarantee:d.non_lapse_guarantee||null,
-        death_payout_options:d.death_payout_options||null,breakeven_year:d.breakeven_year||null,
-        num_indices:d.num_indices||null,num_indexed_accounts:d.num_indexed_accounts||null,
-        net_premium_allocation:d.net_premium_allocation||null,
-        index_premium_allocation:d.index_premium_allocation||null,
-        index_performance_charges:d.index_performance_charges||null,
-        partial_withdrawal:d.partial_withdrawal||null,free_partial_withdrawal:d.free_partial_withdrawal||null,
-        loan_features:d.loan_features||null,policy_loan_interest:d.policy_loan_interest||null,
-        premium_holiday:d.premium_holiday||null,top_up:d.top_up||null,
-        minimum_premium:d.minimum_premium||null,backdating:d.backdating||null,
-        premium_charge:d.premium_charge||null,policy_fee:d.policy_fee||null,
-        surrender_charge:d.surrender_charge||null,coi_charges:d.coi_charges||null,
-        other_charges:d.other_charges||null,tbc_fields:d.tbc_fields||[]
-      },true);
-      const prods=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
-      const pid=prods[0].product_id;
-      await sbInsert('product_rates',{
-        product_id:pid,effective_date:d.effective_date||new Date().toISOString().split('T')[0],
-        guaranteed_rate:d.guaranteed_rate||null,current_rate:d.current_rate||null,
-        minimum_rate:d.minimum_rate||null,cumulative_guarantee:d.cumulative_guarantee||null,
-        loyalty_rate:d.loyalty_rate||null,index_type:d.index_type||null,
-        cap_rate:d.cap_rate||null,floor_rate:d.floor_rate||null,
-        participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
-        source:'Extracted via Product Brain'
-      },false);
-      f.extractionState='saved';
-      saved++;
-      renderQueue();
-    }catch(e){
-      el.className='alert alert-warn';
-      el.textContent=`Warning: failed to save ${f.file.name}: ${e.message}. Continuing...`;
-      await new Promise(r=>setTimeout(r,1000));
-    }
-  }
-  el.className='alert alert-ok';
-  el.textContent=`✓ ${saved} product(s) saved successfully.`;
-  document.getElementById('btn-save-all').disabled=false;
-  updateBatchButtons();
-  if(saved>0) setTimeout(()=>{resetIngest();showPage('browse');},1800);
-}
-
 function resetIngest(){
-  S.files=[];S.activeIdx=-1;
+  S.files=[];
+  S.product={code:'',type:'IUL',status:'Active',date:new Date().toISOString().split('T')[0],extracted:null,extractionState:'pending'};
   document.getElementById('pdf-input').value='';
   document.getElementById('file-queue-container').innerHTML='';
   document.getElementById('ingest-form').style.display='none';
@@ -1013,8 +839,6 @@ function resetIngest(){
   document.getElementById('ext-summary').style.display='none';
   document.getElementById('save-alert').style.display='none';
   document.getElementById('btn-save').style.display='none';
-  document.getElementById('btn-save-all').style.display='none';
-  document.getElementById('btn-extract-all').style.display='none';
   document.getElementById('btn-extract').disabled=false;
   document.getElementById('f-code').value='';
   document.getElementById('prog').style.width='0%';

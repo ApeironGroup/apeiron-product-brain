@@ -33,6 +33,8 @@ serve(async (req) => {
     if (!pdf_base64 || !product_code) {
       throw new Error("Missing pdf_base64 or product_code");
     }
+    // Accept single PDF or array of PDFs
+    const pdfs: string[] = Array.isArray(pdf_base64) ? pdf_base64 : [pdf_base64];
 
     // Fetch Apeiron skill extraction rules from GitHub
     const [fieldGuide, carrierDict] = await Promise.all([
@@ -84,7 +86,10 @@ tbc_fields (array of field names not found)`;
         messages: [{
           role: "user",
           content: [
-            { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf_base64 } },
+            ...pdfs.map(b64 => ({
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: b64 }
+            })),
             { type: "text", text: prompt },
           ],
         }],
