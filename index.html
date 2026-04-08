@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Product Brain — Apeiron International</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
   --claret: #691C32;
@@ -24,28 +24,28 @@
   --radius-lg: 10px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6}
+html,body{height:100%;background:#f7f5f2;color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6}
 
 /* Layout */
 .shell{display:flex;height:100vh;overflow:hidden}
-.sidebar{width:220px;flex-shrink:0;background:var(--oxford);display:flex;flex-direction:column;padding:0}
-.main{flex:1;overflow-y:auto;background:#f5f0eb}
+.sidebar{width:230px;flex-shrink:0;background:var(--white);display:flex;flex-direction:column;padding:0;border-right:1px solid var(--border)}
+.main{flex:1;overflow-y:auto;background:#f7f5f2}
 
 /* Sidebar */
-.sidebar-logo{padding:28px 24px 20px;border-bottom:1px solid rgba(255,255,255,0.08)}
-.logo-shield{width:28px;height:28px;margin-bottom:10px}
-.logo-name{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:#fff;letter-spacing:0.5px;line-height:1.1}
-.logo-sub{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.sidebar-logo{padding:24px 22px 20px;border-bottom:1px solid var(--border)}
+.logo-img{height:32px;width:auto;margin-bottom:6px}
+.logo-sub{font-size:10px;color:var(--khaki);letter-spacing:2px;text-transform:uppercase;margin-top:4px}
 .sidebar-nav{flex:1;padding:16px 12px}
-.nav-section{font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;padding:16px 12px 6px}
-.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius);cursor:pointer;font-size:13px;color:rgba(255,255,255,0.6);font-weight:400;transition:all 0.15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
-.nav-item:hover{color:#fff;background:rgba(255,255,255,0.07)}
-.nav-item.active{color:#fff;background:var(--claret);font-weight:500}
-.nav-icon{width:16px;height:16px;opacity:0.7;flex-shrink:0}
-.nav-item.active .nav-icon{opacity:1}
-.sidebar-footer{padding:16px 24px;border-top:1px solid rgba(255,255,255,0.08)}
-.db-indicator{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,0.4)}
-.db-dot{width:6px;height:6px;border-radius:50%;background:#AC9C8D;flex-shrink:0;transition:background 0.3s}
+.nav-section{font-size:9px;color:var(--khaki);letter-spacing:2px;text-transform:uppercase;padding:16px 12px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius);cursor:pointer;font-size:13px;color:#6b6560;font-weight:400;transition:all 0.15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{color:var(--claret);background:rgba(105,28,50,0.04)}
+.nav-item.active{color:var(--claret);background:rgba(105,28,50,0.08);font-weight:500}
+.nav-icon{width:16px;height:16px;opacity:0.5;flex-shrink:0}
+.nav-item:hover .nav-icon{opacity:0.8}
+.nav-item.active .nav-icon{opacity:1;color:var(--claret)}
+.sidebar-footer{padding:16px 22px;border-top:1px solid var(--border)}
+.db-indicator{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--khaki)}
+.db-dot{width:6px;height:6px;border-radius:50%;background:var(--khaki);flex-shrink:0;transition:background 0.3s}
 .db-dot.connected{background:#4caf7d}
 .db-dot.error{background:#e25c5c}
 
@@ -53,7 +53,7 @@ html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'
 .page{display:none;padding:32px 36px;max-width:1100px}
 .page.active{display:block}
 .page-header{margin-bottom:28px}
-.page-title{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;color:var(--oxford);line-height:1.1}
+.page-title{font-family:'DM Sans',sans-serif;font-size:26px;font-weight:600;color:var(--claret);line-height:1.1}
 .page-sub{font-size:13px;color:var(--text-muted);margin-top:4px}
 
 /* Cards */
@@ -117,14 +117,14 @@ html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'
 .compare-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:0.5px solid var(--border)}
 .compare-table{width:100%;border-collapse:collapse;font-size:12px;background:var(--white)}
 .compare-table thead th{padding:11px 14px;text-align:left;font-weight:500;font-size:11px;white-space:nowrap;border-bottom:0.5px solid var(--border)}
-.compare-table thead th:first-child{background:var(--oxford);color:rgba(255,255,255,0.7);width:140px;position:sticky;left:0;z-index:1}
+.compare-table thead th:first-child{background:var(--alabaster);color:var(--claret);width:140px;position:sticky;left:0;z-index:1}
 .compare-table thead th:not(:first-child){background:var(--white);color:var(--oxford);border-left:0.5px solid var(--border)}
 .compare-table td{padding:9px 14px;border-bottom:0.5px solid var(--border);vertical-align:top;color:var(--text-primary);line-height:1.4}
 .compare-table td:first-child{background:var(--alabaster);color:var(--text-muted);font-size:11px;font-weight:500;position:sticky;left:0;z-index:1;white-space:nowrap}
 .compare-table td:not(:first-child){border-left:0.5px solid var(--border)}
 .compare-table tr:last-child td{border-bottom:none}
-.compare-table .section-row td{background:var(--oxford);color:rgba(255,255,255,0.6);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;padding:7px 14px;font-weight:500}
-.compare-table .section-row td:first-child{background:var(--oxford)}
+.compare-table .section-row td{background:var(--alabaster);color:var(--claret);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;padding:7px 14px;font-weight:500}
+.compare-table .section-row td:first-child{background:var(--alabaster)}
 .diff-cell{background:#fef9ed !important}
 .tbc-text{color:var(--text-light);font-style:italic}
 
@@ -135,12 +135,12 @@ html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'
 .filter-count{font-size:12px;color:var(--text-muted);margin-left:auto}
 
 /* Compare bar */
-.compare-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--oxford);color:#fff;padding:12px 20px;border-radius:40px;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(17,37,74,0.3);z-index:100;font-size:13px;transition:all 0.2s}
+.compare-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--white);color:var(--text-primary);padding:12px 20px;border-radius:40px;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(105,28,50,0.15);border:1px solid var(--border);z-index:100;font-size:13px;transition:all 0.2s}
 .compare-bar.hidden{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(8px)}
-.compare-bar-label{color:rgba(255,255,255,0.7)}
+.compare-bar-label{color:var(--khaki)}
 .btn-compare{background:var(--claret);color:#fff;border:none;padding:7px 16px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-clear{background:transparent;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif}
-.btn-clear:hover{color:#fff}
+.btn-clear{background:transparent;border:none;color:var(--khaki);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif}
+.btn-clear:hover{color:var(--claret)}
 
 /* Extraction grid */
 .ext-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px;max-height:260px;overflow-y:auto}
@@ -182,7 +182,7 @@ html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'
 /* Stats row */
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
 .stat-card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px}
-.stat-val{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--oxford);line-height:1}
+.stat-val{font-family:'DM Sans',sans-serif;font-size:28px;font-weight:600;color:var(--oxford);line-height:1}
 .stat-label{font-size:11px;color:var(--text-muted);margin-top:4px}
 .stat-card.accent{background:var(--claret);border-color:var(--claret)}
 .stat-card.accent .stat-val{color:#fff}
@@ -197,11 +197,7 @@ input[type=file]{display:none}
   <!-- Sidebar -->
   <nav class="sidebar">
     <div class="sidebar-logo">
-      <svg class="logo-shield" viewBox="0 0 28 32" fill="none">
-        <path d="M14 0L0 5.5V16C0 24 14 32 14 32C14 32 28 24 28 16V5.5L14 0Z" fill="#691C32"/>
-        <text x="14" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="14" font-weight="bold" fill="white">α</text>
-      </svg>
-      <div class="logo-name">Apeiron</div>
+      <img class="logo-img" src="logo.png" alt="Apeiron International">
       <div class="logo-sub">Product Brain</div>
     </div>
 
