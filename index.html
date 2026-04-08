@@ -519,7 +519,20 @@ function saveConfig(){
   S.cfg.url=document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
   S.cfg.key=document.getElementById('cfg-key').value.trim();
   S.cfg.ant=document.getElementById('cfg-ant').value.trim();
+  try{localStorage.setItem('pb_cfg',JSON.stringify(S.cfg));}catch(e){}
   updateDbDot();
+}
+
+function loadConfig(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('pb_cfg'));
+    if(saved){
+      S.cfg.url=saved.url||'';S.cfg.key=saved.key||'';S.cfg.ant=saved.ant||'';
+      document.getElementById('cfg-url').value=S.cfg.url;
+      document.getElementById('cfg-key').value=S.cfg.key;
+      document.getElementById('cfg-ant').value=S.cfg.ant;
+    }
+  }catch(e){}
 }
 
 function updateDbDot(){
@@ -1171,6 +1184,7 @@ async function loadPromos(){
   }
 }
 
+loadConfig();
 updateDbDot();
 loadDashboard();
 </script>
