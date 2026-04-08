@@ -111,6 +111,16 @@ html,body{height:100%;background:#f7f5f2;color:var(--text-primary);font-family:'
 .fq-add-more{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--claret);cursor:pointer;padding:6px 0;background:none;border:none;font-family:'DM Sans',sans-serif}
 .fq-add-more:hover{text-decoration:underline}
 
+/* Editable extraction fields */
+.ext-section-title{font-size:10px;font-weight:600;color:var(--claret);text-transform:uppercase;letter-spacing:1.5px;margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.ext-fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px}
+.ext-field{display:flex;flex-direction:column;gap:3px}
+.ext-field label{font-size:10px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px}
+.ext-field input,.ext-field textarea{padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-primary);background:var(--white);font-family:'DM Sans',sans-serif;transition:border-color 0.15s}
+.ext-field input:focus,.ext-field textarea:focus{outline:none;border-color:var(--claret)}
+.ext-field input.tbc{color:var(--text-muted);font-style:italic}
+.ext-field textarea{resize:vertical;min-height:52px}
+
 /* Progress */
 .progress-track{height:3px;background:var(--alabaster);border-radius:2px}
 .progress-fill{height:3px;background:var(--claret);border-radius:2px;transition:width 0.5s ease}
@@ -159,7 +169,7 @@ html,body{height:100%;background:#f7f5f2;color:var(--text-primary);font-family:'
 .btn-clear:hover{color:var(--claret)}
 
 /* Extraction grid */
-.ext-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px;max-height:260px;overflow-y:auto}
+.ext-grid{margin-top:14px}
 .ext-row{display:flex;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--alabaster);border-radius:4px}
 .ext-key{font-size:11px;color:var(--text-muted);flex-shrink:0}
 .ext-val{font-size:11px;color:var(--oxford);text-align:right;word-break:break-word}
@@ -674,7 +684,7 @@ function showExtractionResult(){
   if(!d) return;
   document.getElementById('extraction-block').style.display='block';
   document.getElementById('prog').style.width='100%';
-  document.getElementById('ext-status-text').textContent='Extraction complete';
+  document.getElementById('ext-status-text').textContent='Extraction complete — review and edit fields below before saving';
   document.getElementById('ext-badge').className='badge badge-ok';
   document.getElementById('ext-badge').textContent='Complete';
   const tbc=(d.tbc_fields||[]).length;
@@ -683,15 +693,78 @@ function showExtractionResult(){
     `<span class="badge badge-ok">✓ ${found} fields extracted</span>`+
     (tbc>0?`<span class="badge badge-warn">⚠ ${tbc} TBC</span>`:'')+
     `<span class="badge badge-info">${d.company||'Unknown carrier'}</span>`;
-  const preview=['product_name','company','jurisdiction','plan_type','currency','premium_term','entry_age_min','entry_age_max','death_benefit','premium_charge','guaranteed_rate','cap_rate'];
-  document.getElementById('ext-grid').innerHTML=preview.map(fld=>{
-    const v=d[fld];
-    const disp=Array.isArray(v)?v.join(', '):(v||'TBC');
-    const tbc2=!v||v==='TBC';
-    return`<div class="ext-row"><span class="ext-key">${FL[fld]||fld}</span><span class="ext-val${tbc2?' tbc':''}">${disp}</span></div>`;
-  }).join('');
+
+  // All sections + fields for editable form
+  const ALL_SECTIONS=[
+    {label:'Product overview',fields:['product_name','company','plan_type','currency','jurisdiction','regulatory_regime','governing_law','financial_strength_rating','capital_adequacy_ratio','ownership']},
+    {label:'Product details',fields:['product_type','premium_term','policy_term','ecv_scw_option']},
+    {label:'Market & eligibility',fields:['entry_age_min','entry_age_max','entry_age_notes','eligible_countries','nftf_countries','us_canada_persons','non_med_limit']},
+    {label:'Death benefits',fields:['death_benefit','terminal_illness','non_lapse_guarantee','death_payout_options','breakeven_year']},
+    {label:'Allocation & index design',fields:['num_indices','num_indexed_accounts','net_premium_allocation','index_premium_allocation','index_performance_charges','segment_initiation_date']},
+    {label:'Flexibility & operations',fields:['partial_withdrawal','free_partial_withdrawal','account_reallocation_frequency','auto_premium_spread','minimum_premium','backdating','top_up','premium_holiday','change_of_life_assured','contingent_life_insured','contingent_owner','policy_split','future_insurability','rop_rider','quit_smoking','incapacity_benefits','conversion_privilege','carrier_privilege']},
+    {label:'Charges',fields:['premium_charge','policy_fee','surrender_charge','free_withdrawal_charge','coi_charges','index_performance_charge','other_charges']},
+    {label:'Crediting rates',fields:['guaranteed_rate','current_rate','minimum_rate','cumulative_guarantee','loyalty_rate']},
+    {label:'Index mechanics',fields:['index_type','cap_rate','guaranteed_min_cap','floor_rate','participation_rate','min_participation_rate','multiplier','illustration_rate']},
+    {label:'Loans',fields:['loan_features','policy_loan_interest']},
+  ];
+
+  const LABELS={
+    product_name:'Product name',company:'Company',plan_type:'Plan type',currency:'Currency',
+    jurisdiction:'Jurisdiction',regulatory_regime:'Regulatory regime',governing_law:'Governing law',
+    financial_strength_rating:'Financial strength',capital_adequacy_ratio:'Capital adequacy',ownership:'Ownership',
+    product_type:'Type',premium_term:'Premium term',policy_term:'Policy term',ecv_scw_option:'ECV/SCW',
+    entry_age_min:'Min age',entry_age_max:'Max age',entry_age_notes:'Age notes',
+    eligible_countries:'Eligible countries',nftf_countries:'NFTF countries',us_canada_persons:'US/Canada persons',non_med_limit:'Non-med limit',
+    death_benefit:'Death benefit',terminal_illness:'Terminal illness',non_lapse_guarantee:'Non-lapse guarantee',
+    death_payout_options:'Death payout options',breakeven_year:'Breakeven year',
+    num_indices:'No. of indices',num_indexed_accounts:'Indexed accounts',net_premium_allocation:'Net premium alloc',
+    index_premium_allocation:'Index premium alloc',index_performance_charges:'Index perf charges',segment_initiation_date:'Segment initiation date',
+    partial_withdrawal:'Partial withdrawal',free_partial_withdrawal:'Free withdrawal',account_reallocation_frequency:'Reallocation frequency',
+    auto_premium_spread:'Auto premium spread',minimum_premium:'Min premium',backdating:'Backdating',
+    top_up:'Top-up',premium_holiday:'Premium holiday',change_of_life_assured:'Change of life assured',
+    contingent_life_insured:'Contingent life insured',contingent_owner:'Contingent owner',policy_split:'Policy split',
+    future_insurability:'Future insurability',rop_rider:'ROP rider',quit_smoking:'Quit smoking',
+    incapacity_benefits:'Incapacity benefits',conversion_privilege:'Conversion privilege',carrier_privilege:'Carrier privilege',
+    premium_charge:'Premium charge',policy_fee:'Policy fee',surrender_charge:'Surrender charge',
+    free_withdrawal_charge:'Free withdrawal charge',coi_charges:'COI charges',index_performance_charge:'Index perf charge',other_charges:'Other charges',
+    guaranteed_rate:'Guaranteed rate',current_rate:'Current rate',minimum_rate:'Min rate',
+    cumulative_guarantee:'Cumulative guarantee',loyalty_rate:'Loyalty rate',
+    index_type:'Index type',cap_rate:'Cap rate',guaranteed_min_cap:'Guaranteed min cap',floor_rate:'Floor rate',
+    participation_rate:'Participation rate',min_participation_rate:'Min participation rate',multiplier:'Multiplier',illustration_rate:'Illustration rate',
+    loan_features:'Loan features',policy_loan_interest:'Loan interest',
+  };
+
+  let html='';
+  ALL_SECTIONS.forEach(sec=>{
+    html+=`<div class="ext-section-title">${sec.label}</div><div class="ext-fields-grid">`;
+    sec.fields.forEach(fld=>{
+      const raw=d[fld];
+      const val=Array.isArray(raw)?raw.join(', '):(raw||'');
+      const isTbc=!raw||raw==='TBC';
+      const long=val.length>60;
+      const label=LABELS[fld]||fld;
+      if(long){
+        html+=`</div><div class="ext-field" style="grid-column:1/-1;margin-bottom:4px">
+          <label>${label}</label>
+          <textarea oninput="updateExtracted('${fld}',this.value)" class="${isTbc?'tbc':''}">${val}</textarea>
+        </div><div class="ext-fields-grid">`;
+      } else {
+        html+=`<div class="ext-field">
+          <label>${label}</label>
+          <input type="text" value="${val.replace(/"/g,'&quot;')}" oninput="updateExtracted('${fld}',this.value)" class="${isTbc?'tbc':''}">
+        </div>`;
+      }
+    });
+    html+='</div>';
+  });
+
+  document.getElementById('ext-grid').innerHTML=html;
   document.getElementById('ext-summary').style.display='block';
   document.getElementById('btn-save').style.display='inline-flex';
+}
+
+function updateExtracted(field,value){
+  if(S.product.extracted) S.product.extracted[field]=value;
 }
 
 const dz=document.getElementById('drop-zone');
