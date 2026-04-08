@@ -95,6 +95,21 @@ html,body{height:100%;background:#f7f5f2;color:var(--text-primary);font-family:'
 .upload-zone-title{font-size:15px;font-weight:500;color:var(--oxford);margin-bottom:3px}
 .upload-zone-sub{font-size:12px;color:var(--text-muted)}
 
+/* File queue */
+.file-queue{margin-top:14px;margin-bottom:14px}
+.file-queue-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer;transition:all 0.15s}
+.file-queue-item:hover{border-color:var(--khaki)}
+.file-queue-item.active{border-color:var(--claret);border-left:3px solid var(--claret);background:#fdf8f6}
+.fq-icon{font-size:18px;color:var(--claret);flex-shrink:0;width:24px;text-align:center}
+.fq-info{flex:1;min-width:0}
+.fq-name{font-size:13px;font-weight:500;color:var(--oxford);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fq-size{font-size:11px;color:var(--text-muted)}
+.fq-status{flex-shrink:0}
+.fq-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px;transition:all 0.15s;flex-shrink:0}
+.fq-remove:hover{color:#8a1a1a;background:#fdecea}
+.fq-add-more{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--claret);cursor:pointer;padding:6px 0;background:none;border:none;font-family:'DM Sans',sans-serif}
+.fq-add-more:hover{text-decoration:underline}
+
 /* Progress */
 .progress-track{height:3px;background:var(--alabaster);border-radius:2px}
 .progress-fill{height:3px;background:var(--claret);border-radius:2px;transition:width 0.5s ease}
@@ -289,11 +304,13 @@ input[type=file]{display:none}
         <div class="page-sub">Upload a carrier brochure PDF — AI extracts all fields automatically</div>
       </div>
       <div class="upload-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
-        <input type="file" id="pdf-input" accept=".pdf" onchange="handleFile(event)">
+        <input type="file" id="pdf-input" accept=".pdf" multiple onchange="handleFiles(event)">
         <div class="upload-zone-icon">↑</div>
-        <div class="upload-zone-title">Drop carrier brochure PDF here</div>
-        <div class="upload-zone-sub">or click to browse · any carrier · any jurisdiction</div>
+        <div class="upload-zone-title">Drop carrier brochure PDFs here</div>
+        <div class="upload-zone-sub">or click to browse · multiple files supported · any carrier · any jurisdiction</div>
       </div>
+
+      <div id="file-queue-container"></div>
 
       <div id="ingest-form" style="display:none">
         <div class="section-label">Product identity</div>
@@ -343,9 +360,11 @@ input[type=file]{display:none}
 
         <div id="save-alert" style="display:none"></div>
 
-        <div style="display:flex;gap:10px;align-items:center">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-extract" onclick="runExtraction()">Extract from PDF</button>
+          <button class="btn btn-primary" id="btn-extract-all" onclick="runExtractAll()" style="display:none">Extract All</button>
           <button class="btn btn-outline" id="btn-save" onclick="saveProduct()" style="display:none">Save to database</button>
+          <button class="btn btn-outline" id="btn-save-all" onclick="saveAllProducts()" style="display:none">Save All</button>
           <button class="btn btn-ghost" onclick="resetIngest()">Reset</button>
         </div>
       </div>
@@ -451,9 +470,8 @@ const S = {
   cfg: {url:'',key:'',ant:''},
   products: [],
   selected: new Set(),
-  extracted: null,
-  pdfB64: null,
-  file: null
+  files: [],      // [{file, pdfB64, code, type, status, date, extracted, extractionState}]
+  activeIdx: -1
 };
 
 const SECTIONS = [
@@ -574,20 +592,113 @@ async function loadDashboard(){
   }catch(e){}
 }
 
-function handleFile(e){
-  const f=e.target.files[0];
-  if(!f) return;
-  S.file=f;
-  const reader=new FileReader();
-  reader.onload=ev=>{S.pdfB64=ev.target.result.split(',')[1];};
-  reader.readAsDataURL(f);
-  document.getElementById('drop-zone').innerHTML=`
-    <div class="upload-zone-icon" style="color:var(--claret)">✓</div>
-    <div class="upload-zone-title">${f.name}</div>
-    <div class="upload-zone-sub">${(f.size/1024/1024).toFixed(2)} MB · ready</div>
-  `;
+function handleFiles(e){
+  const fileList=Array.from(e.target.files||[]).filter(f=>f.type==='application/pdf');
+  if(!fileList.length) return;
+  fileList.forEach(f=>{
+    const entry={file:f,pdfB64:null,code:'',type:'IUL',status:'Active',date:new Date().toISOString().split('T')[0],extracted:null,extractionState:'pending'};
+    const reader=new FileReader();
+    reader.onload=ev=>{entry.pdfB64=ev.target.result.split(',')[1];renderQueue();};
+    reader.readAsDataURL(f);
+    S.files.push(entry);
+  });
+  if(S.activeIdx<0) S.activeIdx=0;
+  renderQueue();
+  selectFile(S.activeIdx);
   document.getElementById('ingest-form').style.display='block';
-  document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
+  updateBatchButtons();
+}
+
+function renderQueue(){
+  const c=document.getElementById('file-queue-container');
+  if(!S.files.length){c.innerHTML='';return;}
+  let html='<div class="file-queue">';
+  S.files.forEach((f,i)=>{
+    const sizeMB=(f.file.size/1024/1024).toFixed(2);
+    const stClass=f.extractionState==='extracted'?'badge-ok':f.extractionState==='saved'?'badge-active':f.extractionState==='error'?'badge-warn':'badge-info';
+    const stLabel=f.extractionState==='extracted'?'Extracted':f.extractionState==='saved'?'Saved':f.extractionState==='extracting'?'Extracting...':f.extractionState==='error'?'Error':'Pending';
+    const ready=f.pdfB64?'':'<span style="font-size:10px;color:var(--text-muted);margin-left:4px">reading...</span>';
+    html+=`<div class="file-queue-item${i===S.activeIdx?' active':''}" onclick="selectFile(${i})">
+      <div class="fq-icon">📄</div>
+      <div class="fq-info"><div class="fq-name">${f.file.name}${ready}</div><div class="fq-size">${sizeMB} MB${f.code?' · '+f.code:''}</div></div>
+      <div class="fq-status"><span class="badge ${stClass}" style="font-size:10px;padding:2px 7px">${stLabel}</span></div>
+      <button class="fq-remove" onclick="event.stopPropagation();removeFile(${i})" title="Remove">×</button>
+    </div>`;
+  });
+  html+='<button class="fq-add-more" onclick="document.getElementById(\'pdf-input\').click()">+ Add more PDFs</button>';
+  html+='</div>';
+  c.innerHTML=html;
+}
+
+function selectFile(idx){
+  if(idx<0||idx>=S.files.length) return;
+  // save current form values to previous active file
+  saveFormToActive();
+  S.activeIdx=idx;
+  const f=S.files[idx];
+  document.getElementById('f-code').value=f.code;
+  document.getElementById('f-type').value=f.type;
+  document.getElementById('f-status').value=f.status;
+  document.getElementById('f-date').value=f.date;
+  // update extraction display
+  if(f.extracted){
+    showExtractionResult(f);
+  } else {
+    document.getElementById('extraction-block').style.display='none';
+    document.getElementById('ext-summary').style.display='none';
+    document.getElementById('btn-save').style.display='none';
+  }
+  document.getElementById('save-alert').style.display='none';
+  renderQueue();
+  updateBatchButtons();
+}
+
+function saveFormToActive(){
+  if(S.activeIdx<0||S.activeIdx>=S.files.length) return;
+  const f=S.files[S.activeIdx];
+  f.code=document.getElementById('f-code').value.trim();
+  f.type=document.getElementById('f-type').value;
+  f.status=document.getElementById('f-status').value;
+  f.date=document.getElementById('f-date').value;
+}
+
+function removeFile(idx){
+  S.files.splice(idx,1);
+  if(!S.files.length){resetIngest();return;}
+  if(S.activeIdx>=S.files.length) S.activeIdx=S.files.length-1;
+  else if(S.activeIdx>idx) S.activeIdx--;
+  selectFile(S.activeIdx);
+}
+
+function showExtractionResult(f){
+  document.getElementById('extraction-block').style.display='block';
+  document.getElementById('prog').style.width='100%';
+  document.getElementById('ext-status-text').textContent='Extraction complete';
+  document.getElementById('ext-badge').className='badge badge-ok';
+  document.getElementById('ext-badge').textContent='Complete';
+  const d=f.extracted;
+  const tbc=(d.tbc_fields||[]).length;
+  const found=65-tbc;
+  document.getElementById('ext-badges').innerHTML=
+    `<span class="badge badge-ok">✓ ${found} fields extracted</span>`+
+    (tbc>0?`<span class="badge badge-warn">⚠ ${tbc} TBC</span>`:'')+
+    `<span class="badge badge-info">${d.company||'Unknown carrier'}</span>`;
+  const preview=['product_name','company','jurisdiction','plan_type','currency','premium_term','entry_age_min','entry_age_max','death_benefit','premium_charge','guaranteed_rate','cap_rate'];
+  document.getElementById('ext-grid').innerHTML=preview.map(fld=>{
+    const v=d[fld];
+    const disp=Array.isArray(v)?v.join(', '):(v||'TBC');
+    const tbc2=!v||v==='TBC';
+    return`<div class="ext-row"><span class="ext-key">${FL[fld]||fld}</span><span class="ext-val${tbc2?' tbc':''}">${disp}</span></div>`;
+  }).join('');
+  document.getElementById('ext-summary').style.display='block';
+  document.getElementById('btn-save').style.display='inline-flex';
+}
+
+function updateBatchButtons(){
+  const multi=S.files.length>1;
+  document.getElementById('btn-extract-all').style.display=multi?'inline-flex':'none';
+  const anyExtracted=S.files.some(f=>f.extracted&&f.extractionState==='extracted');
+  document.getElementById('btn-save-all').style.display=(multi&&anyExtracted)?'inline-flex':'none';
 }
 
 const dz=document.getElementById('drop-zone');
@@ -595,11 +706,9 @@ dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover
 dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
 dz.addEventListener('drop',e=>{
   e.preventDefault();dz.classList.remove('dragover');
-  const f=e.dataTransfer.files[0];
-  if(f&&f.type==='application/pdf'){
-    const dt=new DataTransfer();dt.items.add(f);
-    document.getElementById('pdf-input').files=dt.files;
-    handleFile({target:{files:[f]}});
+  const files=Array.from(e.dataTransfer.files).filter(f=>f.type==='application/pdf');
+  if(files.length){
+    handleFiles({target:{files}});
   }
 });
 
@@ -613,16 +722,14 @@ async function fetchSkillFile(path){
   }catch(e){ return null; }
 }
 
-async function runExtraction(){
-  if(!S.pdfB64){alert('Please select a PDF first.');return;}
-  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
-  const code=document.getElementById('f-code').value.trim();
-  if(!code){alert('Enter a product code first.');return;}
-  document.getElementById('extraction-block').style.display='block';
-  document.getElementById('btn-extract').disabled=true;
-  document.getElementById('save-alert').style.display='none';
-  document.getElementById('btn-save').style.display='none';
-  setProgress(10,'Fetching extraction rules from GitHub...');
+async function extractSingleFile(idx){
+  const entry=S.files[idx];
+  if(!entry||!entry.pdfB64) throw new Error('PDF not ready');
+  if(!entry.code) throw new Error('Enter a product code first');
+  if(!S.cfg.ant) throw new Error('Configure Anthropic API key in Settings first');
+
+  entry.extractionState='extracting';
+  renderQueue();
 
   const [fieldGuide,carrierDict]=await Promise.all([
     fetchSkillFile('product-list-updater/references/field-extraction-guide.md'),
@@ -633,11 +740,9 @@ async function runExtraction(){
     carrierDict?`## CARRIER DICTIONARY\n${carrierDict}`:''
   ].filter(Boolean).join('\n\n---\n\n');
 
-  setProgress(20,fieldGuide?'Skill rules loaded from GitHub ✓':'Sending PDF to extraction engine...');
-
   const prompt=`You are extracting structured insurance product data from a carrier brochure PDF for Apeiron International.
 
-Product code: ${code}
+Product code: ${entry.code}
 
 ${skillContext?`Use this Apeiron extraction knowledge:\n\n${skillContext}\n\n---\n\n`:''}
 
@@ -662,57 +767,97 @@ index_type, cap_rate, guaranteed_min_cap, floor_rate, participation_rate,
 min_participation_rate, multiplier, illustration_rate,
 tbc_fields (array of field names not found)`;
 
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':S.cfg.ant,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:4000,
+      messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:entry.pdfB64}},
+        {type:'text',text:prompt}
+      ]}]
+    })
+  });
+  const j=await res.json();
+  if(j.error) throw new Error(j.error.message);
+  const raw=j.content.map(b=>b.text||'').join('');
+  const clean=raw.replace(/```json|```/g,'').trim();
+  const data=JSON.parse(clean);
+  data.product_code=entry.code;
+  data.product_type=entry.type;
+  data.status=entry.status;
+  data.effective_date=entry.date;
+  entry.extracted=data;
+  entry.extractionState='extracted';
+  renderQueue();
+  return data;
+}
+
+async function runExtraction(){
+  saveFormToActive();
+  const entry=S.files[S.activeIdx];
+  if(!entry){alert('No file selected.');return;}
+  if(!entry.pdfB64){alert('PDF still loading, please wait.');return;}
+  if(!entry.code){alert('Enter a product code first.');return;}
+  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
+
+  document.getElementById('extraction-block').style.display='block';
+  document.getElementById('btn-extract').disabled=true;
+  document.getElementById('save-alert').style.display='none';
+  document.getElementById('btn-save').style.display='none';
+  setProgress(10,'Fetching extraction rules...');
+
   try{
     setProgress(50,'AI reading brochure...');
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':S.cfg.ant,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:4000,
-        messages:[{role:'user',content:[
-          {type:'document',source:{type:'base64',media_type:'application/pdf',data:S.pdfB64}},
-          {type:'text',text:prompt}
-        ]}]
-      })
-    });
-    setProgress(85,'Processing results...');
-    const j=await res.json();
-    if(j.error) throw new Error(j.error.message);
-    const raw=j.content.map(b=>b.text||'').join('');
-    const clean=raw.replace(/```json|```/g,'').trim();
-    const data=JSON.parse(clean);
-    data.product_code=code;
-    data.product_type=document.getElementById('f-type').value;
-    data.status=document.getElementById('f-status').value;
-    data.effective_date=document.getElementById('f-date').value;
-    S.extracted=data;
+    await extractSingleFile(S.activeIdx);
     setProgress(100,'Extraction complete');
-    document.getElementById('ext-badge').className='badge badge-ok';
-    document.getElementById('ext-badge').textContent='Complete';
-    const tbc=(data.tbc_fields||[]).length;
-    const found=65-tbc;
-    document.getElementById('ext-badges').innerHTML=
-      `<span class="badge badge-ok">✓ ${found} fields extracted</span>`+
-      (tbc>0?`<span class="badge badge-warn">⚠ ${tbc} TBC</span>`:'')+
-      `<span class="badge badge-info">${data.company||'Unknown carrier'}</span>`;
-    const preview=['product_name','company','jurisdiction','plan_type','currency','premium_term','entry_age_min','entry_age_max','death_benefit','premium_charge','guaranteed_rate','cap_rate'];
-    document.getElementById('ext-grid').innerHTML=preview.map(f=>{
-      const v=data[f];
-      const disp=Array.isArray(v)?v.join(', '):(v||'TBC');
-      const tbc2=!v||v==='TBC';
-      return`<div class="ext-row"><span class="ext-key">${FL[f]||f}</span><span class="ext-val${tbc2?' tbc':''}">${disp}</span></div>`;
-    }).join('');
-    document.getElementById('ext-summary').style.display='block';
-    document.getElementById('btn-save').style.display='inline-flex';
+    showExtractionResult(entry);
     document.getElementById('btn-extract').disabled=false;
+    updateBatchButtons();
   }catch(e){
+    entry.extractionState='error';
+    renderQueue();
     setProgress(0,'');
-    document.getElementById('ext-badge').className='badge badge-err';
+    document.getElementById('ext-badge').className='badge badge-warn';
     document.getElementById('ext-badge').textContent='Error';
     document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
     document.getElementById('btn-extract').disabled=false;
   }
+}
+
+async function runExtractAll(){
+  saveFormToActive();
+  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
+  const pending=S.files.filter(f=>f.extractionState==='pending'&&f.pdfB64);
+  if(!pending.length){alert('No pending files to extract. Ensure all have product codes.');return;}
+  const missing=pending.filter(f=>!f.code);
+  if(missing.length){alert(`${missing.length} file(s) missing product codes. Please fill them in first.`);return;}
+
+  document.getElementById('btn-extract-all').disabled=true;
+  document.getElementById('btn-extract').disabled=true;
+  document.getElementById('extraction-block').style.display='block';
+
+  let done=0;
+  for(let i=0;i<S.files.length;i++){
+    const f=S.files[i];
+    if(f.extractionState!=='pending'||!f.pdfB64||!f.code) continue;
+    S.activeIdx=i;
+    selectFile(i);
+    setProgress(Math.round((done/pending.length)*100),`Extracting ${done+1} of ${pending.length}: ${f.file.name}...`);
+    try{
+      await extractSingleFile(i);
+      showExtractionResult(f);
+    }catch(e){
+      f.extractionState='error';
+      renderQueue();
+    }
+    done++;
+  }
+  setProgress(100,`All done — ${done} file(s) extracted`);
+  document.getElementById('btn-extract-all').disabled=false;
+  document.getElementById('btn-extract').disabled=false;
+  updateBatchButtons();
 }
 
 function setProgress(pct,text){
@@ -721,13 +866,15 @@ function setProgress(pct,text){
 }
 
 async function saveProduct(){
-  if(!S.extracted) return;
+  saveFormToActive();
+  const entry=S.files[S.activeIdx];
+  if(!entry||!entry.extracted) return;
   const el=document.getElementById('save-alert');
   el.style.display='block';
   el.className='alert alert-info';
   el.textContent='Saving to database...';
   document.getElementById('btn-save').disabled=true;
-  const d=S.extracted;
+  const d=entry.extracted;
   try{
     const cc=d.product_code.split('-')[0].toUpperCase();
     await sbInsert('carriers',{
@@ -779,10 +926,16 @@ async function saveProduct(){
       participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
       source:'Extracted via Product Brain'
     },false);
+    entry.extractionState='saved';
     el.className='alert alert-ok';
     el.textContent=`✓ ${d.product_name} saved successfully.`;
     document.getElementById('btn-save').disabled=false;
-    setTimeout(()=>{resetIngest();showPage('browse');},1800);
+    renderQueue();
+    updateBatchButtons();
+    // If all files saved, navigate to browse after delay
+    if(S.files.every(f=>f.extractionState==='saved')){
+      setTimeout(()=>{resetIngest();showPage('browse');},1800);
+    }
   }catch(e){
     el.className='alert alert-err';
     el.textContent='Save failed: '+e.message;
@@ -790,36 +943,101 @@ async function saveProduct(){
   }
 }
 
+async function saveAllProducts(){
+  saveFormToActive();
+  const toSave=S.files.filter(f=>f.extracted&&f.extractionState==='extracted');
+  if(!toSave.length){alert('No extracted files to save.');return;}
+  document.getElementById('btn-save-all').disabled=true;
+  const el=document.getElementById('save-alert');
+  let saved=0;
+  for(let i=0;i<S.files.length;i++){
+    const f=S.files[i];
+    if(!f.extracted||f.extractionState!=='extracted') continue;
+    S.activeIdx=i;
+    selectFile(i);
+    el.style.display='block';
+    el.className='alert alert-info';
+    el.textContent=`Saving ${saved+1} of ${toSave.length}: ${f.extracted.product_name||f.file.name}...`;
+    try{
+      const d=f.extracted;
+      const cc=d.product_code.split('-')[0].toUpperCase();
+      await sbInsert('carriers',{
+        carrier_code:cc,name:d.company||'',short_name:(d.company||'').split(' ')[0],
+        jurisdiction:d.jurisdiction?[d.jurisdiction]:[],regulatory_regime:d.regulatory_regime||null,
+        governing_law:d.governing_law||null,financial_strength_rating:d.financial_strength_rating||null,
+        capital_adequacy_ratio:d.capital_adequacy_ratio||null,
+        regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
+        status:'Active'
+      },true);
+      const cars=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
+      const cid=cars[0].carrier_id;
+      await sbInsert('products',{
+        carrier_id:cid,product_code:d.product_code,product_name:d.product_name||'',
+        product_type:d.product_type||'IUL',status:d.status||'Active',
+        plan_type:d.plan_type||null,currency:d.currency||null,
+        premium_term:d.premium_term||null,policy_term:d.policy_term||null,
+        ecv_scw_option:d.ecv_scw_option||null,ownership:d.ownership||null,
+        entry_age_min:d.entry_age_min||null,entry_age_max:d.entry_age_max||null,
+        entry_age_notes:d.entry_age_notes||null,eligible_countries:d.eligible_countries||null,
+        nftf_countries:d.nftf_countries||null,us_canada_persons:d.us_canada_persons||null,
+        non_med_limit:d.non_med_limit||null,death_benefit:d.death_benefit||null,
+        terminal_illness:d.terminal_illness||null,non_lapse_guarantee:d.non_lapse_guarantee||null,
+        death_payout_options:d.death_payout_options||null,breakeven_year:d.breakeven_year||null,
+        num_indices:d.num_indices||null,num_indexed_accounts:d.num_indexed_accounts||null,
+        net_premium_allocation:d.net_premium_allocation||null,
+        index_premium_allocation:d.index_premium_allocation||null,
+        index_performance_charges:d.index_performance_charges||null,
+        partial_withdrawal:d.partial_withdrawal||null,free_partial_withdrawal:d.free_partial_withdrawal||null,
+        loan_features:d.loan_features||null,policy_loan_interest:d.policy_loan_interest||null,
+        premium_holiday:d.premium_holiday||null,top_up:d.top_up||null,
+        minimum_premium:d.minimum_premium||null,backdating:d.backdating||null,
+        premium_charge:d.premium_charge||null,policy_fee:d.policy_fee||null,
+        surrender_charge:d.surrender_charge||null,coi_charges:d.coi_charges||null,
+        other_charges:d.other_charges||null,tbc_fields:d.tbc_fields||[]
+      },true);
+      const prods=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
+      const pid=prods[0].product_id;
+      await sbInsert('product_rates',{
+        product_id:pid,effective_date:d.effective_date||new Date().toISOString().split('T')[0],
+        guaranteed_rate:d.guaranteed_rate||null,current_rate:d.current_rate||null,
+        minimum_rate:d.minimum_rate||null,cumulative_guarantee:d.cumulative_guarantee||null,
+        loyalty_rate:d.loyalty_rate||null,index_type:d.index_type||null,
+        cap_rate:d.cap_rate||null,floor_rate:d.floor_rate||null,
+        participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
+        source:'Extracted via Product Brain'
+      },false);
+      f.extractionState='saved';
+      saved++;
+      renderQueue();
+    }catch(e){
+      el.className='alert alert-warn';
+      el.textContent=`Warning: failed to save ${f.file.name}: ${e.message}. Continuing...`;
+      await new Promise(r=>setTimeout(r,1000));
+    }
+  }
+  el.className='alert alert-ok';
+  el.textContent=`✓ ${saved} product(s) saved successfully.`;
+  document.getElementById('btn-save-all').disabled=false;
+  updateBatchButtons();
+  if(saved>0) setTimeout(()=>{resetIngest();showPage('browse');},1800);
+}
+
 function resetIngest(){
-  S.extracted=null;S.pdfB64=null;S.file=null;
+  S.files=[];S.activeIdx=-1;
   document.getElementById('pdf-input').value='';
+  document.getElementById('file-queue-container').innerHTML='';
   document.getElementById('ingest-form').style.display='none';
   document.getElementById('extraction-block').style.display='none';
   document.getElementById('ext-summary').style.display='none';
   document.getElementById('save-alert').style.display='none';
   document.getElementById('btn-save').style.display='none';
+  document.getElementById('btn-save-all').style.display='none';
+  document.getElementById('btn-extract-all').style.display='none';
   document.getElementById('btn-extract').disabled=false;
   document.getElementById('f-code').value='';
   document.getElementById('prog').style.width='0%';
-  dz.innerHTML=`<input type="file" id="pdf-input" accept=".pdf" onchange="handleFile(event)"><div class="upload-zone-icon">↑</div><div class="upload-zone-title">Drop carrier brochure PDF here</div><div class="upload-zone-sub">or click to browse · any carrier · any jurisdiction</div>`;
+  dz.innerHTML=`<input type="file" id="pdf-input" accept=".pdf" multiple onchange="handleFiles(event)"><div class="upload-zone-icon">↑</div><div class="upload-zone-title">Drop carrier brochure PDFs here</div><div class="upload-zone-sub">or click to browse · multiple files supported · any carrier · any jurisdiction</div>`;
   dz.onclick=()=>document.getElementById('pdf-input').click();
-  setupDrop();
-}
-
-function setupDrop(){
-  const d=document.getElementById('drop-zone');
-  if(!d) return;
-  d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('dragover');});
-  d.addEventListener('dragleave',()=>d.classList.remove('dragover'));
-  d.addEventListener('drop',e=>{
-    e.preventDefault();d.classList.remove('dragover');
-    const f=e.dataTransfer.files[0];
-    if(f&&f.type==='application/pdf'){
-      const dt=new DataTransfer();dt.items.add(f);
-      document.getElementById('pdf-input').files=dt.files;
-      handleFile({target:{files:[f]}});
-    }
-  });
 }
 
 async function loadProducts(){
