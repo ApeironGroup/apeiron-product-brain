@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Brain — Apeiron International</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --claret: #691C32;
+  --claret-light: #8a2340;
+  --oxford: #11254A;
+  --khaki: #AC9C8D;
+  --alabaster: #EFE9E1;
+  --alice: #E8EEF2;
+  --white: #ffffff;
+  --border: rgba(172,156,141,0.3);
+  --border-strong: rgba(105,28,50,0.25);
+  --text-primary: #11254A;
+  --text-muted: #AC9C8D;
+  --text-light: #c8bdb5;
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#f5f0eb;color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6}
+
+/* Layout */
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:220px;flex-shrink:0;background:var(--oxford);display:flex;flex-direction:column;padding:0}
+.main{flex:1;overflow-y:auto;background:#f5f0eb}
+
+/* Sidebar */
+.sidebar-logo{padding:28px 24px 20px;border-bottom:1px solid rgba(255,255,255,0.08)}
+.logo-shield{width:28px;height:28px;margin-bottom:10px}
+.logo-name{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:#fff;letter-spacing:0.5px;line-height:1.1}
+.logo-sub{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.sidebar-nav{flex:1;padding:16px 12px}
+.nav-section{font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;padding:16px 12px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius);cursor:pointer;font-size:13px;color:rgba(255,255,255,0.6);font-weight:400;transition:all 0.15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{color:#fff;background:rgba(255,255,255,0.07)}
+.nav-item.active{color:#fff;background:var(--claret);font-weight:500}
+.nav-icon{width:16px;height:16px;opacity:0.7;flex-shrink:0}
+.nav-item.active .nav-icon{opacity:1}
+.sidebar-footer{padding:16px 24px;border-top:1px solid rgba(255,255,255,0.08)}
+.db-indicator{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,0.4)}
+.db-dot{width:6px;height:6px;border-radius:50%;background:#AC9C8D;flex-shrink:0;transition:background 0.3s}
+.db-dot.connected{background:#4caf7d}
+.db-dot.error{background:#e25c5c}
+
+/* Main content */
+.page{display:none;padding:32px 36px;max-width:1100px}
+.page.active{display:block}
+.page-header{margin-bottom:28px}
+.page-title{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;color:var(--oxford);line-height:1.1}
+.page-sub{font-size:13px;color:var(--text-muted);margin-top:4px}
+
+/* Cards */
+.card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
+
+/* Form elements */
+.field-row{display:flex;gap:14px;margin-bottom:14px}
+.field{flex:1;display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px}
+.field input,.field select,.field textarea{padding:9px 12px;border:0.5px solid var(--border-strong);border-radius:var(--radius);font-size:13px;color:var(--text-primary);background:var(--white);font-family:'DM Sans',sans-serif;transition:border-color 0.15s;width:100%}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--claret)}
+.field textarea{resize:vertical;min-height:72px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;border:none;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.btn-primary{background:var(--claret);color:#fff}
+.btn-primary:hover{background:var(--claret-light)}
+.btn-primary:disabled{background:var(--khaki);cursor:not-allowed}
+.btn-outline{background:transparent;border:0.5px solid var(--border-strong);color:var(--text-primary)}
+.btn-outline:hover{border-color:var(--claret);color:var(--claret);background:#fdf5f7}
+.btn-ghost{background:transparent;border:none;color:var(--text-muted);padding:9px 12px}
+.btn-ghost:hover{color:var(--claret)}
+.btn-sm{padding:6px 12px;font-size:12px}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:3px;font-size:11px;font-weight:500}
+.badge-active{background:#e8f5ee;color:#276749}
+.badge-shelved{background:#fef3e2;color:#8a5a00}
+.badge-disc{background:#fdecea;color:#8a1a1a}
+.badge-info{background:var(--alice);color:var(--oxford)}
+.badge-warn{background:#fef3e2;color:#8a5a00}
+.badge-ok{background:#e8f5ee;color:#276749}
+
+/* Upload zone */
+.upload-zone{border:1.5px dashed var(--border-strong);border-radius:var(--radius-lg);padding:44px 24px;text-align:center;background:var(--white);cursor:pointer;transition:all 0.2s}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--claret);background:#fdf8f6}
+.upload-zone-icon{font-size:28px;color:var(--khaki);margin-bottom:10px}
+.upload-zone-title{font-size:15px;font-weight:500;color:var(--oxford);margin-bottom:3px}
+.upload-zone-sub{font-size:12px;color:var(--text-muted)}
+
+/* Progress */
+.progress-track{height:3px;background:var(--alabaster);border-radius:2px}
+.progress-fill{height:3px;background:var(--claret);border-radius:2px;transition:width 0.5s ease}
+
+/* Product grid */
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.product-card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;cursor:pointer;transition:all 0.15s;position:relative;user-select:none}
+.product-card:hover{border-color:var(--khaki);box-shadow:0 2px 12px rgba(105,28,50,0.06)}
+.product-card.selected{border-color:var(--claret);border-width:1.5px;box-shadow:0 0 0 3px rgba(105,28,50,0.06)}
+.product-card.selected::after{content:"✓";position:absolute;top:12px;right:12px;width:18px;height:18px;background:var(--claret);color:#fff;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;line-height:18px;text-align:center}
+.pc-carrier{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:3px}
+.pc-name{font-size:13px;font-weight:500;color:var(--oxford);margin-bottom:4px;line-height:1.3}
+.pc-code{font-size:10px;color:var(--text-muted);font-family:monospace;margin-bottom:10px}
+.pc-tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{padding:2px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.tag-type{background:var(--alice);color:var(--oxford)}
+.tag-curr{background:var(--alabaster);color:var(--claret)}
+
+/* Compare table */
+.compare-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:0.5px solid var(--border)}
+.compare-table{width:100%;border-collapse:collapse;font-size:12px;background:var(--white)}
+.compare-table thead th{padding:11px 14px;text-align:left;font-weight:500;font-size:11px;white-space:nowrap;border-bottom:0.5px solid var(--border)}
+.compare-table thead th:first-child{background:var(--oxford);color:rgba(255,255,255,0.7);width:140px;position:sticky;left:0;z-index:1}
+.compare-table thead th:not(:first-child){background:var(--white);color:var(--oxford);border-left:0.5px solid var(--border)}
+.compare-table td{padding:9px 14px;border-bottom:0.5px solid var(--border);vertical-align:top;color:var(--text-primary);line-height:1.4}
+.compare-table td:first-child{background:var(--alabaster);color:var(--text-muted);font-size:11px;font-weight:500;position:sticky;left:0;z-index:1;white-space:nowrap}
+.compare-table td:not(:first-child){border-left:0.5px solid var(--border)}
+.compare-table tr:last-child td{border-bottom:none}
+.compare-table .section-row td{background:var(--oxford);color:rgba(255,255,255,0.6);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;padding:7px 14px;font-weight:500}
+.compare-table .section-row td:first-child{background:var(--oxford)}
+.diff-cell{background:#fef9ed !important}
+.tbc-text{color:var(--text-light);font-style:italic}
+
+/* Filters bar */
+.filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.filter-select{padding:7px 12px;border:0.5px solid var(--border-strong);border-radius:var(--radius);font-size:12px;color:var(--text-primary);background:var(--white);font-family:'DM Sans',sans-serif}
+.filter-select:focus{outline:none;border-color:var(--claret)}
+.filter-count{font-size:12px;color:var(--text-muted);margin-left:auto}
+
+/* Compare bar */
+.compare-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--oxford);color:#fff;padding:12px 20px;border-radius:40px;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(17,37,74,0.3);z-index:100;font-size:13px;transition:all 0.2s}
+.compare-bar.hidden{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(8px)}
+.compare-bar-label{color:rgba(255,255,255,0.7)}
+.btn-compare{background:var(--claret);color:#fff;border:none;padding:7px 16px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
+.btn-clear{background:transparent;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif}
+.btn-clear:hover{color:#fff}
+
+/* Extraction grid */
+.ext-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px;max-height:260px;overflow-y:auto}
+.ext-row{display:flex;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--alabaster);border-radius:4px}
+.ext-key{font-size:11px;color:var(--text-muted);flex-shrink:0}
+.ext-val{font-size:11px;color:var(--oxford);text-align:right;word-break:break-word}
+.ext-val.tbc{color:var(--text-light);font-style:italic}
+
+/* Alert */
+.alert{padding:10px 14px;border-radius:var(--radius);font-size:12px;margin-bottom:14px;line-height:1.5}
+.alert-ok{background:#e8f5ee;color:#276749;border:0.5px solid #a3d4b5}
+.alert-err{background:#fdecea;color:#8a1a1a;border:0.5px solid #f0a8a8}
+.alert-info{background:var(--alice);color:var(--oxford);border:0.5px solid #b5c8d8}
+.alert-warn{background:#fef3e2;color:#8a5a00;border:0.5px solid #f5c842}
+
+/* Promo cards */
+.promo-card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.promo-left{flex:1}
+.promo-name{font-size:14px;font-weight:500;color:var(--claret);margin-bottom:3px}
+.promo-product{font-size:11px;color:var(--text-muted);margin-bottom:6px}
+.promo-desc{font-size:12px;color:var(--text-primary);line-height:1.5}
+.promo-dates{font-size:11px;color:var(--text-muted);margin-top:8px}
+
+/* Config */
+.config-section{margin-bottom:20px}
+.config-label{font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.config-input{width:100%;padding:9px 12px;border:0.5px solid var(--border-strong);border-radius:var(--radius);font-size:12px;font-family:monospace;color:var(--text-primary);background:var(--white)}
+.config-input:focus{outline:none;border-color:var(--claret)}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 24px;color:var(--text-muted)}
+.empty-icon{font-size:32px;margin-bottom:12px;opacity:0.4}
+.empty-title{font-size:14px;font-weight:500;color:var(--oxford);margin-bottom:4px}
+.empty-sub{font-size:12px}
+
+/* Divider */
+.section-label{font-size:10px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:2px;margin:20px 0 10px;padding-bottom:6px;border-bottom:0.5px solid var(--border)}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.stat-card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px}
+.stat-val{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--oxford);line-height:1}
+.stat-label{font-size:11px;color:var(--text-muted);margin-top:4px}
+.stat-card.accent{background:var(--claret);border-color:var(--claret)}
+.stat-card.accent .stat-val{color:#fff}
+.stat-card.accent .stat-label{color:rgba(255,255,255,0.6)}
+
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <svg class="logo-shield" viewBox="0 0 28 32" fill="none">
+        <path d="M14 0L0 5.5V16C0 24 14 32 14 32C14 32 28 24 28 16V5.5L14 0Z" fill="#691C32"/>
+        <text x="14" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="14" font-weight="bold" fill="white">α</text>
+      </svg>
+      <div class="logo-name">Apeiron</div>
+      <div class="logo-sub">Product Brain</div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="nav-section">Workspace</div>
+      <button class="nav-item active" onclick="showPage('dashboard')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2zm7 0h5v5H9zM2 9h5v5H2zm7 0h5v5H9z" opacity=".7"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" onclick="showPage('ingest')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        Ingest product
+      </button>
+      <button class="nav-item" onclick="showPage('browse')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1" opacity=".7"/><rect x="9" y="1" width="6" height="6" rx="1" opacity=".7"/><rect x="1" y="9" width="6" height="6" rx="1" opacity=".7"/><rect x="9" y="9" width="6" height="6" rx="1" opacity=".7"/></svg>
+        Browse & compare
+      </button>
+      <button class="nav-item" onclick="showPage('compare')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h8M10 5l3 3-3 3M6 5L3 8l3 3" stroke-linecap="round"/></svg>
+        Comparison
+      </button>
+
+      <div class="nav-section">Management</div>
+      <button class="nav-item" onclick="showPage('promos')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h12M8 2l2 6-2 6" stroke-linecap="round"/></svg>
+        Promotions
+      </button>
+      <button class="nav-item" onclick="showPage('config')">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4"/></svg>
+        Settings
+      </button>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="db-indicator">
+        <div class="db-dot" id="db-dot"></div>
+        <span id="db-label">Not configured</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Dashboard -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header">
+        <div class="page-title">Overview</div>
+        <div class="page-sub">Apeiron International — Product Intelligence Platform</div>
+      </div>
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card accent"><div class="stat-val" id="stat-total">—</div><div class="stat-label">Total products</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-active">—</div><div class="stat-label">Active</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-carriers">—</div><div class="stat-label">Carriers</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-promos">—</div><div class="stat-label">Active promotions</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Getting started</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div style="padding:14px;background:var(--alabaster);border-radius:6px">
+            <div style="font-size:11px;font-weight:500;color:var(--claret);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step 1</div>
+            <div style="font-size:13px;font-weight:500;color:var(--oxford);margin-bottom:4px">Configure connection</div>
+            <div style="font-size:12px;color:var(--text-muted)">Add Supabase URL, service role key, and Anthropic API key in Settings.</div>
+          </div>
+          <div style="padding:14px;background:var(--alabaster);border-radius:6px">
+            <div style="font-size:11px;font-weight:500;color:var(--claret);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step 2</div>
+            <div style="font-size:13px;font-weight:500;color:var(--oxford);margin-bottom:4px">Ingest products</div>
+            <div style="font-size:12px;color:var(--text-muted)">Upload carrier brochures. AI extracts all fields and saves to your database.</div>
+          </div>
+          <div style="padding:14px;background:var(--alabaster);border-radius:6px">
+            <div style="font-size:11px;font-weight:500;color:var(--claret);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step 3</div>
+            <div style="font-size:13px;font-weight:500;color:var(--oxford);margin-bottom:4px">Browse & compare</div>
+            <div style="font-size:12px;color:var(--text-muted)">Select any products and run instant side-by-side comparison tables.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent activity</div>
+        <div id="recent-activity" class="empty" style="padding:24px">
+          <div style="font-size:12px;color:var(--text-muted)">No activity yet — ingest your first product to get started.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ingest -->
+    <div id="page-ingest" class="page">
+      <div class="page-header">
+        <div class="page-title">Ingest product</div>
+        <div class="page-sub">Upload a carrier brochure PDF — AI extracts all fields automatically</div>
+      </div>
+      <div class="upload-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
+        <input type="file" id="pdf-input" accept=".pdf" onchange="handleFile(event)">
+        <div class="upload-zone-icon">↑</div>
+        <div class="upload-zone-title">Drop carrier brochure PDF here</div>
+        <div class="upload-zone-sub">or click to browse · any carrier · any jurisdiction</div>
+      </div>
+
+      <div id="ingest-form" style="display:none">
+        <div class="section-label">Product identity</div>
+        <div class="field-row">
+          <div class="field" style="max-width:200px">
+            <label>Product code *</label>
+            <input type="text" id="f-code" placeholder="e.g. MLB-MGIUL24">
+          </div>
+          <div class="field" style="max-width:180px">
+            <label>Product type</label>
+            <select id="f-type">
+              <option value="IUL">IUL</option>
+              <option value="UL">UL</option>
+              <option value="WL">WL</option>
+              <option value="Term">Term</option>
+              <option value="Endowment">Endowment</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:160px">
+            <label>Status</label>
+            <select id="f-status">
+              <option value="Active">Active</option>
+              <option value="Shelved">Shelved</option>
+              <option value="Discontinued">Discontinued</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:180px">
+            <label>Effective date</label>
+            <input type="date" id="f-date">
+          </div>
+        </div>
+
+        <div id="extraction-block" style="display:none">
+          <div class="section-label">Extraction</div>
+          <div class="card" style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span style="font-size:13px;font-weight:500;color:var(--oxford)" id="ext-status-text">Extracting...</span>
+              <span class="badge badge-info" id="ext-badge">Processing</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="prog" style="width:0%"></div></div>
+            <div id="ext-summary" style="display:none;margin-top:12px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="ext-badges"></div>
+              <div class="ext-grid" id="ext-grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="save-alert" style="display:none"></div>
+
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" id="btn-extract" onclick="runExtraction()">Extract from PDF</button>
+          <button class="btn btn-outline" id="btn-save" onclick="saveProduct()" style="display:none">Save to database</button>
+          <button class="btn btn-ghost" onclick="resetIngest()">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Browse -->
+    <div id="page-browse" class="page">
+      <div class="page-header">
+        <div class="page-title">Browse & compare</div>
+        <div class="page-sub">Select two or more products to compare side by side</div>
+      </div>
+      <div class="filters">
+        <select class="filter-select" id="fil-carrier" onchange="renderProducts()"><option value="">All carriers</option></select>
+        <select class="filter-select" id="fil-type" onchange="renderProducts()">
+          <option value="">All types</option>
+          <option value="IUL">IUL</option><option value="UL">UL</option><option value="WL">WL</option><option value="Term">Term</option><option value="Endowment">Endowment</option>
+        </select>
+        <select class="filter-select" id="fil-status" onchange="renderProducts()">
+          <option value="Active">Active only</option>
+          <option value="">All</option>
+          <option value="Shelved">Shelved</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="loadProducts()">Refresh</button>
+        <span class="filter-count" id="product-count"></span>
+      </div>
+      <div id="products-container">
+        <div class="empty"><div class="empty-icon">◎</div><div class="empty-title">No products loaded</div><div class="empty-sub">Configure Supabase in Settings, then click Refresh</div></div>
+      </div>
+    </div>
+
+    <!-- Compare -->
+    <div id="page-compare" class="page">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="page-title">Comparison</div>
+          <div class="page-sub">Differences highlighted in yellow</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="showPage('browse')">← Back to browse</button>
+      </div>
+      <div id="compare-container">
+        <div class="empty"><div class="empty-icon">⇄</div><div class="empty-title">No comparison yet</div><div class="empty-sub">Select products in Browse tab, then click Compare</div></div>
+      </div>
+    </div>
+
+    <!-- Promotions -->
+    <div id="page-promos" class="page">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="page-title">Promotions</div>
+          <div class="page-sub">Active and upcoming carrier promotions</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadPromos()">Refresh</button>
+      </div>
+      <div id="promos-container">
+        <div class="empty"><div class="empty-icon">◈</div><div class="empty-title">No promotions</div><div class="empty-sub">Add promotions directly in your Supabase dashboard</div></div>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div id="page-config" class="page">
+      <div class="page-header">
+        <div class="page-title">Settings</div>
+        <div class="page-sub">Connection credentials — stored in your browser session only</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Supabase</div>
+        <div class="alert alert-info" style="margin-bottom:16px">Use the <strong>service role</strong> key — not the anon key. Found in Supabase → Settings → API.</div>
+        <div class="config-section">
+          <div class="config-label">Project URL</div>
+          <input class="config-input" id="cfg-url" placeholder="https://yourproject.supabase.co" oninput="saveConfig()">
+        </div>
+        <div class="config-section">
+          <div class="config-label">Service role key</div>
+          <input class="config-input" id="cfg-key" type="password" placeholder="eyJ..." oninput="saveConfig()">
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Anthropic API</div>
+        <div class="alert alert-info" style="margin-bottom:16px">Required for PDF extraction. Get your key from <strong>console.anthropic.com</strong></div>
+        <div class="config-section">
+          <div class="config-label">API key</div>
+          <input class="config-input" id="cfg-ant" type="password" placeholder="sk-ant-..." oninput="saveConfig()">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" onclick="testConn()">Test connection</button>
+        <span id="conn-result" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Compare floating bar -->
+<div class="compare-bar hidden" id="compare-bar">
+  <span class="compare-bar-label" id="compare-label">0 selected</span>
+  <button class="btn-clear" onclick="clearSel()">Clear</button>
+  <button class="btn-compare" onclick="runComparison()">Compare →</button>
+</div>
+
+<script>
+const S = {
+  cfg: {url:'',key:'',ant:''},
+  products: [],
+  selected: new Set(),
+  extracted: null,
+  pdfB64: null,
+  file: null
+};
+
+const SECTIONS = [
+  {label:'Product details', fields:['product_type','plan_type','currency','premium_term','policy_term','ecv_scw_option']},
+  {label:'Market & eligibility', fields:['entry_age_min','entry_age_max','entry_age_notes','eligible_countries','us_canada_persons','non_med_limit']},
+  {label:'Death benefits', fields:['death_benefit','terminal_illness','non_lapse_guarantee','death_payout_options','breakeven_year']},
+  {label:'Allocation & index design', fields:['num_indices','num_indexed_accounts','net_premium_allocation','index_premium_allocation','index_performance_charges']},
+  {label:'Flexibility & operations', fields:['partial_withdrawal','free_partial_withdrawal','loan_features','policy_loan_interest','premium_holiday','top_up','minimum_premium','backdating']},
+  {label:'Charges', fields:['premium_charge','policy_fee','surrender_charge','coi_charges','other_charges']},
+  {label:'Crediting rates', fields:['guaranteed_rate','current_rate','minimum_rate','cumulative_guarantee','loyalty_rate']},
+  {label:'Index mechanics', fields:['index_type','cap_rate','floor_rate','participation_rate','multiplier']},
+];
+
+const FL = {
+  product_type:'Type',plan_type:'Plan type',currency:'Currency',premium_term:'Premium term',
+  policy_term:'Policy term',ecv_scw_option:'ECV/SCW',entry_age_min:'Min age',entry_age_max:'Max age',
+  entry_age_notes:'Age notes',eligible_countries:'Eligible countries',us_canada_persons:'US/Canada',
+  non_med_limit:'Non-med limit',death_benefit:'Death benefit',terminal_illness:'Terminal illness',
+  non_lapse_guarantee:'Non-lapse guarantee',death_payout_options:'Death payout',breakeven_year:'Breakeven year',
+  num_indices:'Indices',num_indexed_accounts:'Index accounts',net_premium_allocation:'Net prem alloc',
+  index_premium_allocation:'Index alloc',index_performance_charges:'Index perf charge',
+  partial_withdrawal:'Partial withdrawal',free_partial_withdrawal:'Free withdrawal',
+  loan_features:'Loan features',policy_loan_interest:'Loan interest',premium_holiday:'Premium holiday',
+  top_up:'Top-up',minimum_premium:'Min premium',backdating:'Backdating',
+  premium_charge:'Premium charge',policy_fee:'Policy fee',surrender_charge:'Surrender charge',
+  coi_charges:'COI charges',other_charges:'Other charges',
+  guaranteed_rate:'Guaranteed rate',current_rate:'Current rate',minimum_rate:'Min rate',
+  cumulative_guarantee:'Cum guarantee',loyalty_rate:'Loyalty rate',
+  index_type:'Index type',cap_rate:'Cap rate',floor_rate:'Floor rate',
+  participation_rate:'Participation rate',multiplier:'Multiplier'
+};
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  const map={dashboard:0,ingest:1,browse:2,compare:3,promos:4,config:5};
+  document.querySelectorAll('.nav-item')[map[name]]?.classList.add('active');
+  if(name==='browse') loadProducts();
+  if(name==='promos') loadPromos();
+  if(name==='dashboard') loadDashboard();
+}
+
+function saveConfig(){
+  S.cfg.url=document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
+  S.cfg.key=document.getElementById('cfg-key').value.trim();
+  S.cfg.ant=document.getElementById('cfg-ant').value.trim();
+  updateDbDot();
+}
+
+function updateDbDot(){
+  const dot=document.getElementById('db-dot');
+  const lbl=document.getElementById('db-label');
+  const ok=S.cfg.url&&S.cfg.key&&S.cfg.ant;
+  dot.className='db-dot'+(ok?' connected':'');
+  lbl.textContent=ok?'Connected':'Not configured';
+}
+
+async function sbFetch(table,opts={}){
+  if(!S.cfg.url||!S.cfg.key) throw new Error('Supabase not configured');
+  let url=`${S.cfg.url}/rest/v1/${table}?`;
+  if(opts.select) url+=`select=${encodeURIComponent(opts.select)}&`;
+  if(opts.eq) Object.entries(opts.eq).forEach(([k,v])=>url+=`${k}=eq.${encodeURIComponent(v)}&`);
+  if(opts.in) Object.entries(opts.in).forEach(([k,v])=>url+=`${k}=in.(${v.map(x=>encodeURIComponent(x)).join(',')})`+'&');
+  if(opts.order) url+=`order=${opts.order}&`;
+  if(opts.limit) url+=`limit=${opts.limit}&`;
+  const r=await fetch(url,{
+    method:opts.method||'GET',
+    headers:{'apikey':S.cfg.key,'Authorization':`Bearer ${S.cfg.key}`,'Content-Type':'application/json',
+      'Prefer':opts.upsert?'resolution=merge-duplicates,return=representation':'return=representation'},
+    body:opts.body?JSON.stringify(opts.body):undefined
+  });
+  const d=await r.json();
+  if(!r.ok) throw new Error(d.message||d.error||JSON.stringify(d));
+  return d;
+}
+
+async function sbInsert(table,body,upsert=false){
+  if(!S.cfg.url||!S.cfg.key) throw new Error('Supabase not configured');
+  const r=await fetch(`${S.cfg.url}/rest/v1/${table}`,{
+    method:'POST',
+    headers:{'apikey':S.cfg.key,'Authorization':`Bearer ${S.cfg.key}`,'Content-Type':'application/json',
+      'Prefer':upsert?'resolution=merge-duplicates,return=representation':'return=representation'},
+    body:JSON.stringify(body)
+  });
+  const d=await r.json();
+  if(!r.ok) throw new Error(d.message||d.error||JSON.stringify(d));
+  return d;
+}
+
+async function testConn(){
+  const el=document.getElementById('conn-result');
+  el.textContent='Testing...';
+  try{
+    await sbFetch('products',{select:'product_id',limit:1});
+    el.style.color='#276749';
+    el.textContent='✓ Connection successful';
+    updateDbDot();
+  }catch(e){
+    el.style.color='#8a1a1a';
+    el.textContent='✗ '+e.message;
+  }
+}
+
+async function loadDashboard(){
+  try{
+    const [pr,cr,prom]=await Promise.all([
+      sbFetch('products',{select:'product_id,status',order:'created_at.desc'}),
+      sbFetch('carriers',{select:'carrier_id'}),
+      sbFetch('promotions',{select:'promo_id',eq:{status:'Active'}})
+    ]);
+    const total=pr.length;
+    const active=pr.filter(p=>p.status==='Active').length;
+    document.getElementById('stat-total').textContent=total;
+    document.getElementById('stat-active').textContent=active;
+    document.getElementById('stat-carriers').textContent=cr.length;
+    document.getElementById('stat-promos').textContent=prom.length;
+  }catch(e){}
+}
+
+function handleFile(e){
+  const f=e.target.files[0];
+  if(!f) return;
+  S.file=f;
+  const reader=new FileReader();
+  reader.onload=ev=>{S.pdfB64=ev.target.result.split(',')[1];};
+  reader.readAsDataURL(f);
+  document.getElementById('drop-zone').innerHTML=`
+    <div class="upload-zone-icon" style="color:var(--claret)">✓</div>
+    <div class="upload-zone-title">${f.name}</div>
+    <div class="upload-zone-sub">${(f.size/1024/1024).toFixed(2)} MB · ready</div>
+  `;
+  document.getElementById('ingest-form').style.display='block';
+  document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
+}
+
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('dragover');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type==='application/pdf'){
+    const dt=new DataTransfer();dt.items.add(f);
+    document.getElementById('pdf-input').files=dt.files;
+    handleFile({target:{files:[f]}});
+  }
+});
+
+async function runExtraction(){
+  if(!S.pdfB64){alert('Please select a PDF first.');return;}
+  if(!S.cfg.ant){alert('Configure Anthropic API key in Settings first.');return;}
+  const code=document.getElementById('f-code').value.trim();
+  if(!code){alert('Enter a product code first.');return;}
+  document.getElementById('extraction-block').style.display='block';
+  document.getElementById('btn-extract').disabled=true;
+  document.getElementById('save-alert').style.display='none';
+  document.getElementById('btn-save').style.display='none';
+  setProgress(20,'Sending PDF to extraction engine...');
+
+  const prompt=`Extract structured insurance product data from this carrier brochure PDF for Apeiron International's product database.
+
+Return ONLY a valid JSON object. No markdown, no preamble. Product code is: ${code}
+
+Extract these fields (use "TBC" if not found):
+product_name, company, plan_type, currency (array), premium_term, policy_term, ecv_scw_option,
+jurisdiction, regulatory_regime, governing_law, financial_strength_rating, capital_adequacy_ratio,
+ownership, entry_age_min (integer), entry_age_max (integer), entry_age_notes,
+eligible_countries, nftf_countries, us_canada_persons, non_med_limit,
+death_benefit, terminal_illness, non_lapse_guarantee, death_payout_options, breakeven_year,
+num_indices, num_indexed_accounts, net_premium_allocation, index_premium_allocation, index_performance_charges,
+segment_initiation_date, partial_withdrawal, free_partial_withdrawal, account_reallocation_frequency,
+auto_premium_spread, minimum_premium, backdating, top_up, premium_holiday,
+loan_features, policy_loan_interest, change_of_life_assured, contingent_life_insured,
+contingent_owner, policy_split, future_insurability, rop_rider, quit_smoking,
+incapacity_benefits, conversion_privilege, carrier_privilege,
+premium_charge, policy_fee, surrender_charge, free_withdrawal_charge, coi_charges,
+index_performance_charge, other_charges,
+guaranteed_rate, current_rate, minimum_rate, cumulative_guarantee, loyalty_rate,
+index_type, cap_rate, guaranteed_min_cap, floor_rate, participation_rate,
+min_participation_rate, multiplier, illustration_rate,
+tbc_fields (array of field names not found)`;
+
+  try{
+    setProgress(50,'AI reading brochure...');
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':S.cfg.ant,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:4000,
+        messages:[{role:'user',content:[
+          {type:'document',source:{type:'base64',media_type:'application/pdf',data:S.pdfB64}},
+          {type:'text',text:prompt}
+        ]}]
+      })
+    });
+    setProgress(85,'Processing results...');
+    const j=await res.json();
+    if(j.error) throw new Error(j.error.message);
+    const raw=j.content.map(b=>b.text||'').join('');
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const data=JSON.parse(clean);
+    data.product_code=code;
+    data.product_type=document.getElementById('f-type').value;
+    data.status=document.getElementById('f-status').value;
+    data.effective_date=document.getElementById('f-date').value;
+    S.extracted=data;
+    setProgress(100,'Extraction complete');
+    document.getElementById('ext-badge').className='badge badge-ok';
+    document.getElementById('ext-badge').textContent='Complete';
+    const tbc=(data.tbc_fields||[]).length;
+    const found=65-tbc;
+    document.getElementById('ext-badges').innerHTML=
+      `<span class="badge badge-ok">✓ ${found} fields extracted</span>`+
+      (tbc>0?`<span class="badge badge-warn">⚠ ${tbc} TBC</span>`:'')+
+      `<span class="badge badge-info">${data.company||'Unknown carrier'}</span>`;
+    const preview=['product_name','company','jurisdiction','plan_type','currency','premium_term','entry_age_min','entry_age_max','death_benefit','premium_charge','guaranteed_rate','cap_rate'];
+    document.getElementById('ext-grid').innerHTML=preview.map(f=>{
+      const v=data[f];
+      const disp=Array.isArray(v)?v.join(', '):(v||'TBC');
+      const tbc2=!v||v==='TBC';
+      return`<div class="ext-row"><span class="ext-key">${FL[f]||f}</span><span class="ext-val${tbc2?' tbc':''}">${disp}</span></div>`;
+    }).join('');
+    document.getElementById('ext-summary').style.display='block';
+    document.getElementById('btn-save').style.display='inline-flex';
+    document.getElementById('btn-extract').disabled=false;
+  }catch(e){
+    setProgress(0,'');
+    document.getElementById('ext-badge').className='badge badge-err';
+    document.getElementById('ext-badge').textContent='Error';
+    document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
+    document.getElementById('btn-extract').disabled=false;
+  }
+}
+
+function setProgress(pct,text){
+  document.getElementById('prog').style.width=pct+'%';
+  if(text) document.getElementById('ext-status-text').textContent=text;
+}
+
+async function saveProduct(){
+  if(!S.extracted) return;
+  const el=document.getElementById('save-alert');
+  el.style.display='block';
+  el.className='alert alert-info';
+  el.textContent='Saving to database...';
+  document.getElementById('btn-save').disabled=true;
+  const d=S.extracted;
+  try{
+    const cc=d.product_code.split('-')[0].toUpperCase();
+    await sbInsert('carriers',{
+      carrier_code:cc,name:d.company||'',
+      short_name:(d.company||'').split(' ')[0],
+      jurisdiction:d.jurisdiction?[d.jurisdiction]:[],
+      regulatory_regime:d.regulatory_regime||null,
+      governing_law:d.governing_law||null,
+      financial_strength_rating:d.financial_strength_rating||null,
+      capital_adequacy_ratio:d.capital_adequacy_ratio||null,
+      regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
+      status:'Active'
+    },true);
+    const cars=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
+    const cid=cars[0].carrier_id;
+    await sbInsert('products',{
+      carrier_id:cid,product_code:d.product_code,product_name:d.product_name||'',
+      product_type:d.product_type||'IUL',status:d.status||'Active',
+      plan_type:d.plan_type||null,currency:d.currency||null,
+      premium_term:d.premium_term||null,policy_term:d.policy_term||null,
+      ecv_scw_option:d.ecv_scw_option||null,ownership:d.ownership||null,
+      entry_age_min:d.entry_age_min||null,entry_age_max:d.entry_age_max||null,
+      entry_age_notes:d.entry_age_notes||null,eligible_countries:d.eligible_countries||null,
+      nftf_countries:d.nftf_countries||null,us_canada_persons:d.us_canada_persons||null,
+      non_med_limit:d.non_med_limit||null,death_benefit:d.death_benefit||null,
+      terminal_illness:d.terminal_illness||null,non_lapse_guarantee:d.non_lapse_guarantee||null,
+      death_payout_options:d.death_payout_options||null,breakeven_year:d.breakeven_year||null,
+      num_indices:d.num_indices||null,num_indexed_accounts:d.num_indexed_accounts||null,
+      net_premium_allocation:d.net_premium_allocation||null,
+      index_premium_allocation:d.index_premium_allocation||null,
+      index_performance_charges:d.index_performance_charges||null,
+      partial_withdrawal:d.partial_withdrawal||null,
+      free_partial_withdrawal:d.free_partial_withdrawal||null,
+      loan_features:d.loan_features||null,policy_loan_interest:d.policy_loan_interest||null,
+      premium_holiday:d.premium_holiday||null,top_up:d.top_up||null,
+      minimum_premium:d.minimum_premium||null,backdating:d.backdating||null,
+      premium_charge:d.premium_charge||null,policy_fee:d.policy_fee||null,
+      surrender_charge:d.surrender_charge||null,coi_charges:d.coi_charges||null,
+      other_charges:d.other_charges||null,tbc_fields:d.tbc_fields||[]
+    },true);
+    const prods=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
+    const pid=prods[0].product_id;
+    await sbInsert('product_rates',{
+      product_id:pid,effective_date:d.effective_date||new Date().toISOString().split('T')[0],
+      guaranteed_rate:d.guaranteed_rate||null,current_rate:d.current_rate||null,
+      minimum_rate:d.minimum_rate||null,cumulative_guarantee:d.cumulative_guarantee||null,
+      loyalty_rate:d.loyalty_rate||null,index_type:d.index_type||null,
+      cap_rate:d.cap_rate||null,floor_rate:d.floor_rate||null,
+      participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
+      source:'Extracted via Product Brain'
+    },false);
+    el.className='alert alert-ok';
+    el.textContent=`✓ ${d.product_name} saved successfully.`;
+    document.getElementById('btn-save').disabled=false;
+    setTimeout(()=>{resetIngest();showPage('browse');},1800);
+  }catch(e){
+    el.className='alert alert-err';
+    el.textContent='Save failed: '+e.message;
+    document.getElementById('btn-save').disabled=false;
+  }
+}
+
+function resetIngest(){
+  S.extracted=null;S.pdfB64=null;S.file=null;
+  document.getElementById('pdf-input').value='';
+  document.getElementById('ingest-form').style.display='none';
+  document.getElementById('extraction-block').style.display='none';
+  document.getElementById('ext-summary').style.display='none';
+  document.getElementById('save-alert').style.display='none';
+  document.getElementById('btn-save').style.display='none';
+  document.getElementById('btn-extract').disabled=false;
+  document.getElementById('f-code').value='';
+  document.getElementById('prog').style.width='0%';
+  dz.innerHTML=`<input type="file" id="pdf-input" accept=".pdf" onchange="handleFile(event)"><div class="upload-zone-icon">↑</div><div class="upload-zone-title">Drop carrier brochure PDF here</div><div class="upload-zone-sub">or click to browse · any carrier · any jurisdiction</div>`;
+  dz.onclick=()=>document.getElementById('pdf-input').click();
+  setupDrop();
+}
+
+function setupDrop(){
+  const d=document.getElementById('drop-zone');
+  if(!d) return;
+  d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('dragover');});
+  d.addEventListener('dragleave',()=>d.classList.remove('dragover'));
+  d.addEventListener('drop',e=>{
+    e.preventDefault();d.classList.remove('dragover');
+    const f=e.dataTransfer.files[0];
+    if(f&&f.type==='application/pdf'){
+      const dt=new DataTransfer();dt.items.add(f);
+      document.getElementById('pdf-input').files=dt.files;
+      handleFile({target:{files:[f]}});
+    }
+  });
+}
+
+async function loadProducts(){
+  if(!S.cfg.url||!S.cfg.key){
+    document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not configured</div><div class="empty-sub">Add Supabase credentials in Settings</div></div>';
+    return;
+  }
+  document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-sub">Loading...</div></div>';
+  try{
+    const [prods,cars]=await Promise.all([
+      sbFetch('products',{select:'product_id,product_code,product_name,product_type,status,currency,entry_age_min,entry_age_max,carrier_id',order:'product_name.asc'}),
+      sbFetch('carriers',{select:'carrier_id,short_name,carrier_code'})
+    ]);
+    const cm={};cars.forEach(c=>cm[c.carrier_id]=c);
+    S.products=prods.map(p=>({...p,carrier:cm[p.carrier_id]}));
+    const carriers=[...new Set(S.products.map(p=>p.carrier?.short_name).filter(Boolean))].sort();
+    const sel=document.getElementById('fil-carrier');
+    sel.innerHTML='<option value="">All carriers</option>'+carriers.map(c=>`<option value="${c}">${c}</option>`).join('');
+    renderProducts();
+  }catch(e){
+    document.getElementById('products-container').innerHTML=`<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Load failed</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function renderProducts(){
+  const cf=document.getElementById('fil-carrier').value;
+  const tf=document.getElementById('fil-type').value;
+  const sf=document.getElementById('fil-status').value;
+  const filtered=S.products.filter(p=>{
+    if(cf&&p.carrier?.short_name!==cf) return false;
+    if(tf&&p.product_type!==tf) return false;
+    if(sf&&p.status!==sf) return false;
+    return true;
+  });
+  document.getElementById('product-count').textContent=`${filtered.length} product${filtered.length!==1?'s':''}`;
+  if(!filtered.length){
+    document.getElementById('products-container').innerHTML='<div class="empty"><div class="empty-icon">◎</div><div class="empty-title">No products</div><div class="empty-sub">Try different filters</div></div>';
+    return;
+  }
+  document.getElementById('products-container').innerHTML=`<div class="product-grid">${filtered.map(p=>`
+    <div class="product-card${S.selected.has(p.product_id)?' selected':''}" onclick="toggleSel('${p.product_id}')">
+      <div class="pc-carrier">${p.carrier?.short_name||'Unknown'}</div>
+      <div class="pc-name">${p.product_name||'—'}</div>
+      <div class="pc-code">${p.product_code}</div>
+      <div class="pc-tags">
+        <span class="tag tag-type">${p.product_type||'—'}</span>
+        <span class="badge ${p.status==='Active'?'badge-active':p.status==='Shelved'?'badge-shelved':'badge-disc'}" style="font-size:10px;padding:2px 7px">${p.status}</span>
+        ${p.currency?`<span class="tag tag-curr">${Array.isArray(p.currency)?p.currency.join('/'):p.currency}</span>`:''}
+      </div>
+    </div>`).join('')}</div>`;
+  updateCompareBar();
+}
+
+function toggleSel(id){
+  if(S.selected.has(id)) S.selected.delete(id);
+  else S.selected.add(id);
+  renderProducts();
+}
+
+function clearSel(){S.selected.clear();renderProducts();}
+
+function updateCompareBar(){
+  const n=S.selected.size;
+  const bar=document.getElementById('compare-bar');
+  bar.classList.toggle('hidden',n<2);
+  document.getElementById('compare-label').textContent=`${n} product${n!==1?'s':''} selected`;
+}
+
+async function runComparison(){
+  if(S.selected.size<2) return;
+  showPage('compare');
+  document.getElementById('compare-container').innerHTML='<div class="empty"><div class="empty-sub">Loading comparison...</div></div>';
+  try{
+    const ids=[...S.selected];
+    const [prods,cars,rates]=await Promise.all([
+      sbFetch('products',{select:'*',in:{product_id:ids}}),
+      sbFetch('carriers',{select:'carrier_id,short_name'}),
+      sbFetch('product_rates',{select:'*',in:{product_id:ids},order:'effective_date.desc'})
+    ]);
+    const cm={};cars.forEach(c=>cm[c.carrier_id]=c);
+    const rm={};rates.forEach(r=>{if(!rm[r.product_id]) rm[r.product_id]=r;});
+    const enriched=prods.map(p=>({...p,...(rm[p.product_id]||{}),carrier:cm[p.carrier_id]}));
+
+    let html='<div class="compare-wrap"><table class="compare-table"><thead><tr>';
+    html+='<th>Field</th>';
+    enriched.forEach(p=>html+=`<th><div style="font-size:11px;color:var(--khaki)">${p.carrier?.short_name||''}</div><div>${p.product_name||p.product_code}</div></th>`);
+    html+='</tr></thead><tbody>';
+
+    SECTIONS.forEach(sec=>{
+      html+=`<tr class="section-row"><td colspan="${enriched.length+1}">${sec.label}</td></tr>`;
+      sec.fields.forEach(field=>{
+        const vals=enriched.map(p=>{let v=p[field];return Array.isArray(v)?v.join(', '):(v||null);});
+        const unique=new Set(vals.filter(Boolean));
+        const diff=unique.size>1;
+        html+=`<tr><td>${FL[field]||field}</td>`;
+        vals.forEach(v=>html+=`<td class="${diff?'diff-cell':''}${!v?' tbc-text':''}">${v||'TBC'}</td>`);
+        html+='</tr>';
+      });
+    });
+    html+='</tbody></table></div>';
+    html+='<div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Yellow = fields where products differ.</div>';
+    document.getElementById('compare-container').innerHTML=html;
+  }catch(e){
+    document.getElementById('compare-container').innerHTML=`<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Failed</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+async function loadPromos(){
+  if(!S.cfg.url||!S.cfg.key){
+    document.getElementById('promos-container').innerHTML='<div class="empty"><div class="empty-icon">⚙</div><div class="empty-title">Not configured</div></div>';
+    return;
+  }
+  try{
+    const p=await sbFetch('promotions',{select:'*',order:'end_date.asc'});
+    if(!p.length){
+      document.getElementById('promos-container').innerHTML='<div class="empty"><div class="empty-icon">◈</div><div class="empty-title">No promotions</div><div class="empty-sub">Add promotions in your Supabase dashboard</div></div>';
+      return;
+    }
+    document.getElementById('promos-container').innerHTML=p.map(pr=>`
+      <div class="promo-card">
+        <div class="promo-left">
+          <div class="promo-name">${pr.promo_name}</div>
+          <div class="promo-product">${pr.target_audience||'All advisors'}</div>
+          <div class="promo-desc">${pr.description||'—'}</div>
+          <div class="promo-dates">Start: ${pr.start_date||'—'} · End: ${pr.end_date||'—'}</div>
+        </div>
+        <span class="badge ${pr.status==='Active'?'badge-active':pr.status==='Upcoming'?'badge-info':'badge-warn'}">${pr.status}</span>
+      </div>`).join('');
+  }catch(e){
+    document.getElementById('promos-container').innerHTML=`<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Failed</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+updateDbDot();
+loadDashboard();
+</script>
+</body>
+</html>
