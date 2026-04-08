@@ -759,11 +759,14 @@ async function extractSingleFile(idx){
     body:{pdf_base64:entry.pdfB64,product_code:entry.code}
   });
   if(fnError){
-    // Try to extract the real error from the response context
-    const msg=fnError.context?.body?JSON.parse(new TextDecoder().decode(fnError.context.body)).error:fnError.message;
-    throw new Error(msg||'Edge Function call failed');
+    let msg=fnError.message||'Edge Function call failed';
+    try{
+      if(typeof fnData==='object'&&fnData?.error) msg=fnData.error;
+      else if(typeof fnData==='string') msg=JSON.parse(fnData).error||msg;
+    }catch(e){}
+    throw new Error(msg);
   }
-  if(fnData.error) throw new Error(fnData.error);
+  if(fnData?.error) throw new Error(fnData.error);
   const data=fnData;
   data.product_code=entry.code;
   data.product_type=entry.type;
