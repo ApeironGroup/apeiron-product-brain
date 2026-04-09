@@ -998,20 +998,27 @@ async function saveProduct(){
   const d=S.product.extracted;
   try{
     const cc=d.product_code.split('-')[0].toUpperCase();
-    await sbInsert('carriers',{
-      carrier_code:cc,name:d.company||'',
-      short_name:(d.company||'').split(' ')[0],
-      jurisdiction:d.jurisdiction?[d.jurisdiction]:[],
-      regulatory_regime:d.regulatory_regime||null,
-      governing_law:d.governing_law||null,
-      financial_strength_rating:d.financial_strength_rating||null,
-      capital_adequacy_ratio:d.capital_adequacy_ratio||null,
-      regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
-      status:'Active'
-    },true);
+
+    // --- Carrier: insert if new, skip if exists ---
+    const existingCarriers=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
+    if(existingCarriers.length===0){
+      const{error:ce}=await sb.from('carriers').insert({
+        carrier_code:cc,name:d.company||'',
+        short_name:(d.company||'').split(' ')[0],
+        jurisdiction:d.jurisdiction?[d.jurisdiction]:[],
+        regulatory_regime:d.regulatory_regime||null,
+        governing_law:d.governing_law||null,
+        financial_strength_rating:d.financial_strength_rating||null,
+        capital_adequacy_ratio:d.capital_adequacy_ratio||null,
+        regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
+        status:'Active'
+      });
+      if(ce) throw new Error(ce.message);
+    }
     const cars=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
     const cid=cars[0].carrier_id;
-    await sbInsert('products',{
+
+    const productData={
       carrier_id:cid,product_code:d.product_code,product_name:d.product_name||'',
       product_type:d.product_type||'IUL',status:d.status||'Active',
       plan_type:d.plan_type||null,currency:d.currency||null,
@@ -1035,7 +1042,17 @@ async function saveProduct(){
       premium_charge:d.premium_charge||null,policy_fee:d.policy_fee||null,
       surrender_charge:d.surrender_charge||null,coi_charges:d.coi_charges||null,
       other_charges:d.other_charges||null,tbc_fields:d.tbc_fields||[]
-    },true);
+    };
+
+    // --- Product: insert if new, update if exists ---
+    const existingProds=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
+    if(existingProds.length===0){
+      const{error:pe}=await sb.from('products').insert(productData);
+      if(pe) throw new Error(pe.message);
+    } else {
+      const{error:ue}=await sb.from('products').update(productData).eq('product_code',d.product_code);
+      if(ue) throw new Error(ue.message);
+    }
     const prods=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
     const pid=prods[0].product_id;
     await sbInsert('product_rates',{
