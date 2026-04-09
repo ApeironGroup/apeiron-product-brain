@@ -1158,11 +1158,14 @@ async function saveEditProduct(){
   try{
     // Update carriers table
     if(EP.carrierId){
+      // jurisdiction is a text[] column — ensure it's always an array
+      const jur=EP.carrierData.jurisdiction;
+      const jurArr=Array.isArray(jur)?jur:(jur?[jur]:[]);
       const{error:ce}=await sb.from('carriers').update({
         name:EP.carrierData.name||null,
         short_name:EP.carrierData.short_name||null,
         carrier_code:EP.carrierData.carrier_code||null,
-        jurisdiction:EP.carrierData.jurisdiction||null,
+        jurisdiction:jurArr,
         regulatory_regime:EP.carrierData.regulatory_regime||null,
         governing_law:EP.carrierData.governing_law||null,
         financial_strength_rating:EP.carrierData.financial_strength_rating||null,
