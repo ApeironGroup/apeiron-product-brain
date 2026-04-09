@@ -514,9 +514,9 @@ const S = {
     code:'', type:'IUL', status:'Active', date:new Date().toISOString().split('T')[0],
     extracted:null, extractionState:'pending'
   },
-  extractQueue: [],    // indices of S.files waiting to extract
-  extracting: false,   // currently running an extraction call
-  lastExtractMs: 0,    // timestamp when last extraction started
+  queueRunning: false,  // async loop is active
+  lastExtractMs: 0,     // timestamp when last extraction started
+  lastInputTokens: 0,   // token count from last extraction (for rate calc)
   countdownTimer: null,
   session: null
 };
@@ -655,9 +655,8 @@ function handleFiles(e){
       entry.pdfB64=ev.target.result.split(',')[1];
       entry.loadState='ready';
       entry.extractState='queued';
-      S.extractQueue.push(S.files.indexOf(entry));
       renderQueue();
-      processExtractionQueue();
+      processExtractionQueue(); // kicks the loop if not already running
     };
     reader.readAsDataURL(f);
     S.files.push(entry);
@@ -710,8 +709,6 @@ function renderQueue(){
 }
 
 function removeFile(idx){
-  // Remove from extract queue if present
-  S.extractQueue=S.extractQueue.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
   S.files.splice(idx,1);
   if(!S.files.length){resetIngest();return;}
   // If all extracted files removed, hide extraction block
@@ -834,115 +831,102 @@ dz.addEventListener('drop',e=>{
 });
 
 const TPM_LIMIT = 10000; // free tier: 10,000 input tokens per minute
-const RATE_BUFFER_MS = 6000; // 6s safety buffer on top of calculated wait
+const RATE_BUFFER_MS = 6000; // 6s safety buffer
 
 function calcWaitMs(inputTokens){
-  // How long until this many tokens regenerate at TPM_LIMIT rate
   if(!inputTokens||inputTokens<=0) return RATE_BUFFER_MS;
   return Math.ceil((inputTokens / TPM_LIMIT) * 60000) + RATE_BUFFER_MS;
 }
 
-async function processExtractionQueue(){
-  if(S.extracting || S.extractQueue.length===0) return;
-
-  // Check if we need to wait for rate limit
-  if(S.lastExtractMs>0){
-    const elapsed=Date.now()-S.lastExtractMs;
-    if(elapsed<RATE_LIMIT_MS){
-      const wait=RATE_LIMIT_MS-elapsed;
-      startCountdown(wait);
-      return; // countdown will call processExtractionQueue again
-    }
-  }
-
-  // Get next file index
-  const idx=S.extractQueue.shift();
-  const entry=S.files[idx];
-  if(!entry||!entry.pdfB64){processExtractionQueue();return;} // skip removed/bad file
-
-  S.extracting=true;
-  S.lastExtractMs=Date.now();
-  entry.extractState='extracting';
-  stopCountdown();
-  renderQueue();
-
-  // Show extraction block with progress
-  document.getElementById('extraction-block').style.display='block';
-  document.getElementById('save-alert').style.display='none';
-  const extractedCount=S.files.filter(f=>f.extractState==='extracted').length;
-  const totalQueued=S.files.length;
-  setProgress(30,`Extracting "${entry.file.name}" (${extractedCount+1} of ${totalQueued})…`);
-  document.getElementById('ext-badge').className='badge badge-info';
-  document.getElementById('ext-badge').textContent='Processing';
-
-  const code=document.getElementById('f-code').value.trim()||'UNKNOWN';
-  try{
-    const fnRes=await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`},
-      body:JSON.stringify({pdf_base64:entry.pdfB64,product_code:code})
-    });
-    const fnBody=await fnRes.json();
-    if(!fnRes.ok) throw new Error(fnBody.error||`Edge Function error ${fnRes.status}: ${JSON.stringify(fnBody)}`);
-    // Response is { data: {...}, inputTokens: N }
-    const extractedData = fnBody.data || fnBody; // fallback for old format
-    const inputTokens = fnBody.inputTokens || 0;
-    entry.extractedData=extractedData;
-    entry.extractState='extracted';
-    entry.inputTokens=inputTokens;
-    mergeAllExtracted();
-    setProgress(100,'');
-    showExtractionResult();
-
-    // Dynamic wait: only as long as the token budget needs to replenish
-    if(S.extractQueue.length>0){
-      S.extracting=false;
-      renderQueue();
-      const waitMs=calcWaitMs(inputTokens);
-      startCountdown(waitMs);
-      return;
-    }
-  }catch(e){
-    entry.extractState='error';
-    entry.errorMsg=e.message;
-    if(S.files.filter(f=>f.extractState==='extracted').length===0){
-      // No successful extractions yet — show error in extraction block
-      document.getElementById('extraction-block').style.display='block';
-      document.getElementById('ext-badge').className='badge badge-warn';
-      document.getElementById('ext-badge').textContent='Error';
-      document.getElementById('ext-status-text').textContent='Extraction failed: '+e.message;
-    }
-    // Queue next file with a default wait after error too
-    if(S.extractQueue.length>0){
-      S.extracting=false;
-      renderQueue();
-      startCountdown(calcWaitMs(8000)); // conservative after unknown error
-      return;
-    }
-  }
-
-  S.extracting=false;
-  renderQueue();
-}
-
-function startCountdown(ms){
-  stopCountdown();
-  const end=Date.now()+ms;
-  // Mark waiting files
-  S.extractQueue.forEach(idx=>{if(S.files[idx]) S.files[idx].extractState='queued';});
-  renderQueue();
-  function tick(){
-    const remaining=Math.ceil((end-Date.now())/1000);
-    if(remaining<=0){
-      updateCountdownDisplay(0);
-      processExtractionQueue();
-      return;
-    }
+// Simple sleep that shows a live countdown in the UI
+async function waitWithCountdown(ms){
+  const end = Date.now() + ms;
+  while(true){
+    const remaining = Math.ceil((end - Date.now()) / 1000);
+    if(remaining <= 0) break;
     updateCountdownDisplay(remaining);
-    S.countdownTimer=setTimeout(tick,1000);
+    await new Promise(r => setTimeout(r, 500));
   }
-  tick();
+  updateCountdownDisplay(0);
 }
+
+// Single async loop — runs while S.queueRunning, processes one file at a time
+async function runExtractionLoop(){
+  if(S.queueRunning) return; // already running
+  S.queueRunning = true;
+
+  while(true){
+    // Find next queued file
+    const entry = S.files.find(f => f.extractState === 'queued' && f.pdfB64);
+    if(!entry) break; // nothing left to do
+
+    // Wait for rate limit if a previous extraction just ran
+    if(S.lastExtractMs > 0){
+      const elapsed = Date.now() - S.lastExtractMs;
+      const waitMs = calcWaitMs(S.lastInputTokens || 8000);
+      if(elapsed < waitMs){
+        // Mark all remaining queued files as waiting
+        S.files.forEach(f=>{ if(f.extractState==='queued') f.extractState='queued'; });
+        renderQueue();
+        await waitWithCountdown(waitMs - elapsed);
+      }
+    }
+
+    // Double-check entry is still queued (user may have removed it)
+    if(entry.extractState !== 'queued') continue;
+
+    // --- Extract this file ---
+    entry.extractState = 'extracting';
+    S.lastExtractMs = Date.now();
+    renderQueue();
+
+    const doneCount = S.files.filter(f=>f.extractState==='extracted').length;
+    const total = S.files.length;
+    document.getElementById('extraction-block').style.display = 'block';
+    document.getElementById('save-alert').style.display = 'none';
+    setProgress(30, `Extracting "${entry.file.name}" (${doneCount+1} of ${total})…`);
+    document.getElementById('ext-badge').className = 'badge badge-info';
+    document.getElementById('ext-badge').textContent = 'Processing';
+
+    const code = document.getElementById('f-code').value.trim() || 'UNKNOWN';
+    try{
+      const fnRes = await fetch(`${SUPABASE_URL}/functions/v1/extract`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`},
+        body: JSON.stringify({pdf_base64: entry.pdfB64, product_code: code})
+      });
+      const fnBody = await fnRes.json();
+      if(!fnRes.ok) throw new Error(fnBody.error || `Edge Function error ${fnRes.status}: ${JSON.stringify(fnBody)}`);
+
+      const extractedData = fnBody.data || fnBody; // support both old + new format
+      const inputTokens = fnBody.inputTokens || 0;
+      entry.extractedData = extractedData;
+      entry.extractState = 'extracted';
+      S.lastInputTokens = inputTokens;
+      mergeAllExtracted();
+      setProgress(100, '');
+      showExtractionResult();
+    }catch(e){
+      entry.extractState = 'error';
+      entry.errorMsg = e.message;
+      S.lastInputTokens = 8000; // conservative for next wait
+      if(S.files.filter(f=>f.extractState==='extracted').length === 0){
+        document.getElementById('extraction-block').style.display = 'block';
+        document.getElementById('ext-badge').className = 'badge badge-warn';
+        document.getElementById('ext-badge').textContent = 'Error';
+        document.getElementById('ext-status-text').textContent = 'Extraction failed: ' + e.message;
+      }
+    }
+
+    renderQueue();
+    // Loop continues → picks up next queued file
+  }
+
+  S.queueRunning = false;
+}
+
+// Kick off the loop when a file is ready — safe to call multiple times
+function processExtractionQueue(){ runExtractionLoop(); }
 
 function stopCountdown(){
   if(S.countdownTimer){clearTimeout(S.countdownTimer);S.countdownTimer=null;}
@@ -1076,9 +1060,9 @@ async function saveProduct(){
 function resetIngest(){
   stopCountdown();
   S.files=[];
-  S.extractQueue=[];
-  S.extracting=false;
+  S.queueRunning=false;
   S.lastExtractMs=0;
+  S.lastInputTokens=0;
   S.product={code:'',type:'IUL',status:'Active',date:new Date().toISOString().split('T')[0],extracted:null,extractionState:'pending'};
   document.getElementById('pdf-input').value='';
   document.getElementById('file-queue-container').innerHTML='';
