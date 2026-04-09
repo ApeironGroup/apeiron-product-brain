@@ -1000,8 +1000,10 @@ async function saveProduct(){
     const cc=d.product_code.split('-')[0].toUpperCase();
 
     // --- Carrier: insert if new, skip if exists ---
+    el.textContent='Step 1/4: Checking carrier…';
     const existingCarriers=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
     if(existingCarriers.length===0){
+      el.textContent='Step 1/4: Inserting carrier…';
       const{error:ce}=await sb.from('carriers').insert({
         carrier_code:cc,name:d.company||'',
         short_name:(d.company||'').split(' ')[0],
@@ -1013,9 +1015,10 @@ async function saveProduct(){
         regulator:d.jurisdiction==='Bermuda'?'BMA':d.jurisdiction==='Singapore'?'MAS':d.jurisdiction==='Hong Kong'?'SFC':null,
         status:'Active'
       });
-      if(ce) throw new Error(ce.message);
+      if(ce) throw new Error(`[Step 1 – carriers insert] code:${ce.code} ${ce.message} | hint:${ce.hint||'none'} | details:${ce.details||'none'}`);
     }
     const cars=await sbFetch('carriers',{select:'carrier_id',eq:{carrier_code:cc}});
+    if(!cars.length) throw new Error('[Step 1] Carrier not found after insert — check RLS policies on carriers table');
     const cid=cars[0].carrier_id;
 
     const productData={
@@ -1045,17 +1048,23 @@ async function saveProduct(){
     };
 
     // --- Product: insert if new, update if exists ---
+    el.textContent='Step 2/4: Checking product…';
     const existingProds=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
     if(existingProds.length===0){
+      el.textContent='Step 2/4: Inserting product…';
       const{error:pe}=await sb.from('products').insert(productData);
-      if(pe) throw new Error(pe.message);
+      if(pe) throw new Error(`[Step 2 – products insert] code:${pe.code} ${pe.message} | hint:${pe.hint||'none'} | details:${pe.details||'none'}`);
     } else {
+      el.textContent='Step 2/4: Updating product…';
       const{error:ue}=await sb.from('products').update(productData).eq('product_code',d.product_code);
-      if(ue) throw new Error(ue.message);
+      if(ue) throw new Error(`[Step 2 – products update] code:${ue.code} ${ue.message} | hint:${ue.hint||'none'} | details:${ue.details||'none'}`);
     }
+    el.textContent='Step 3/4: Fetching product ID…';
     const prods=await sbFetch('products',{select:'product_id',eq:{product_code:d.product_code}});
+    if(!prods.length) throw new Error('[Step 3] Product not found after insert — check RLS policies on products table');
     const pid=prods[0].product_id;
-    await sbInsert('product_rates',{
+    el.textContent='Step 4/4: Saving rates…';
+    const{error:re}=await sb.from('product_rates').insert({
       product_id:pid,effective_date:d.effective_date||new Date().toISOString().split('T')[0],
       guaranteed_rate:d.guaranteed_rate||null,current_rate:d.current_rate||null,
       minimum_rate:d.minimum_rate||null,cumulative_guarantee:d.cumulative_guarantee||null,
@@ -1063,7 +1072,8 @@ async function saveProduct(){
       cap_rate:d.cap_rate||null,floor_rate:d.floor_rate||null,
       participation_rate:d.participation_rate||null,multiplier:d.multiplier||null,
       source:'Extracted via Product Brain'
-    },false);
+    });
+    if(re) throw new Error(`[Step 4 – product_rates insert] code:${re.code} ${re.message} | hint:${re.hint||'none'} | details:${re.details||'none'}`);
     S.product.extractionState='saved';
     el.className='alert alert-ok';
     el.textContent=`✓ ${d.product_name} saved successfully.`;
