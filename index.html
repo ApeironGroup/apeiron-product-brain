@@ -436,6 +436,23 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- Edit Product -->
+    <div id="page-edit" class="page">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title" id="edit-page-title">Edit product</div>
+          <div class="page-sub" id="edit-page-sub">Loading…</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="showPage('browse')">← Back to browse</button>
+          <button class="btn btn-outline btn-sm" id="btn-delete-product" onclick="deleteProduct()" style="color:#8a1a1a;border-color:#f0a8a8">Delete product</button>
+          <button class="btn btn-primary btn-sm" onclick="saveEditProduct()" id="btn-save-edit">Save changes</button>
+        </div>
+      </div>
+      <div id="edit-alert" style="display:none;margin-bottom:14px"></div>
+      <div id="edit-form-container"><div class="empty"><div class="empty-sub">Loading product data…</div></div></div>
+    </div>
+
     <!-- Compare -->
     <div id="page-compare" class="page">
       <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -560,6 +577,11 @@ function showPage(name) {
   if(name==='browse') loadProducts();
   if(name==='promos') loadPromos();
   if(name==='dashboard') loadDashboard();
+}
+
+function showEditPage(productId){
+  showPage('edit');
+  openEditProduct(productId);
 }
 
 // --- Auth ---
@@ -983,6 +1005,247 @@ function mergeAllExtracted(){
   S.product.extractionState='extracted';
 }
 
+// ─── Edit Product ─────────────────────────────────────────────────────────────
+
+const EDIT_SECTIONS=[
+  {label:'Product identity',fields:[
+    {key:'product_name',label:'Product name',type:'text'},
+    {key:'product_code',label:'Product code',type:'text'},
+    {key:'product_type',label:'Type',type:'select',opts:['IUL','UL','WL','Term','Endowment']},
+    {key:'status',label:'Status',type:'select',opts:['Active','Shelved','Discontinued']},
+    {key:'plan_type',label:'Plan type',type:'text'},
+    {key:'currency',label:'Currency',type:'text'},
+    {key:'ownership',label:'Ownership',type:'text'},
+  ]},
+  {label:'Market & eligibility',fields:[
+    {key:'entry_age_min',label:'Min entry age',type:'number'},
+    {key:'entry_age_max',label:'Max entry age',type:'number'},
+    {key:'entry_age_notes',label:'Age notes',type:'textarea'},
+    {key:'eligible_countries',label:'Eligible countries',type:'textarea'},
+    {key:'nftf_countries',label:'NFTF countries',type:'textarea'},
+    {key:'us_canada_persons',label:'US/Canada persons',type:'text'},
+    {key:'non_med_limit',label:'Non-med limit',type:'text'},
+  ]},
+  {label:'Policy terms',fields:[
+    {key:'premium_term',label:'Premium term',type:'text'},
+    {key:'policy_term',label:'Policy term',type:'text'},
+    {key:'ecv_scw_option',label:'ECV/SCW option',type:'text'},
+    {key:'minimum_premium',label:'Minimum premium',type:'text'},
+    {key:'backdating',label:'Backdating',type:'text'},
+  ]},
+  {label:'Death benefits',fields:[
+    {key:'death_benefit',label:'Death benefit',type:'textarea'},
+    {key:'terminal_illness',label:'Terminal illness',type:'text'},
+    {key:'non_lapse_guarantee',label:'Non-lapse guarantee',type:'text'},
+    {key:'death_payout_options',label:'Death payout options',type:'textarea'},
+    {key:'breakeven_year',label:'Breakeven year',type:'text'},
+  ]},
+  {label:'Allocation & index design',fields:[
+    {key:'num_indices',label:'No. of indices',type:'text'},
+    {key:'num_indexed_accounts',label:'Indexed accounts',type:'text'},
+    {key:'net_premium_allocation',label:'Net premium allocation',type:'textarea'},
+    {key:'index_premium_allocation',label:'Index premium allocation',type:'textarea'},
+    {key:'index_performance_charges',label:'Index performance charges',type:'textarea'},
+  ]},
+  {label:'Flexibility & operations',fields:[
+    {key:'partial_withdrawal',label:'Partial withdrawal',type:'textarea'},
+    {key:'free_partial_withdrawal',label:'Free withdrawal',type:'textarea'},
+    {key:'loan_features',label:'Loan features',type:'textarea'},
+    {key:'policy_loan_interest',label:'Loan interest',type:'textarea'},
+    {key:'premium_holiday',label:'Premium holiday',type:'text'},
+    {key:'top_up',label:'Top-up',type:'text'},
+  ]},
+  {label:'Charges',fields:[
+    {key:'premium_charge',label:'Premium charge',type:'textarea'},
+    {key:'policy_fee',label:'Policy fee',type:'text'},
+    {key:'surrender_charge',label:'Surrender charge',type:'textarea'},
+    {key:'coi_charges',label:'COI charges',type:'textarea'},
+    {key:'other_charges',label:'Other charges',type:'textarea'},
+  ]},
+  {label:'Crediting rates',fields:[
+    {key:'guaranteed_rate',label:'Guaranteed rate',type:'text',table:'rates'},
+    {key:'current_rate',label:'Current rate',type:'text',table:'rates'},
+    {key:'minimum_rate',label:'Minimum rate',type:'text',table:'rates'},
+    {key:'cumulative_guarantee',label:'Cumulative guarantee',type:'text',table:'rates'},
+    {key:'loyalty_rate',label:'Loyalty rate',type:'text',table:'rates'},
+  ]},
+  {label:'Index mechanics',fields:[
+    {key:'index_type',label:'Index type',type:'textarea',table:'rates'},
+    {key:'cap_rate',label:'Cap rate',type:'text',table:'rates'},
+    {key:'floor_rate',label:'Floor rate',type:'text',table:'rates'},
+    {key:'participation_rate',label:'Participation rate',type:'text',table:'rates'},
+    {key:'multiplier',label:'Multiplier',type:'text',table:'rates'},
+  ]},
+];
+
+let EP={id:null,productData:{},ratesData:{},ratesId:null}; // edit page state
+
+async function openEditProduct(productId){
+  EP={id:productId,productData:{},ratesData:{},ratesId:null};
+  document.getElementById('edit-alert').style.display='none';
+  document.getElementById('edit-form-container').innerHTML='<div class="empty"><div class="empty-sub">Loading…</div></div>';
+  document.getElementById('btn-save-edit').disabled=false;
+  try{
+    const[prods,rates,carriers]=await Promise.all([
+      sbFetch('products',{select:'*',eq:{product_id:productId}}),
+      sbFetch('product_rates',{select:'*',eq:{product_id:productId},order:'effective_date.desc',limit:1}),
+      sbFetch('carriers',{select:'carrier_id,short_name,name,carrier_code'})
+    ]);
+    if(!prods.length) throw new Error('Product not found');
+    EP.productData={...prods[0]};
+    EP.ratesData=rates.length?{...rates[0]}:{};
+    EP.ratesId=rates.length?rates[0].rate_id:null;
+    const carrier=carriers.find(c=>c.carrier_id===EP.productData.carrier_id);
+    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
+    document.getElementById('edit-page-sub').textContent=`${carrier?.name||'Unknown carrier'} · ${EP.productData.product_code}`;
+    renderEditForm();
+  }catch(e){
+    document.getElementById('edit-form-container').innerHTML=`<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Failed to load</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function renderEditForm(){
+  const combined={...EP.productData,...EP.ratesData};
+  let html='';
+  EDIT_SECTIONS.forEach(sec=>{
+    html+=`<div class="card" style="margin-bottom:14px">
+      <div class="card-title">${sec.label}</div>
+      <div class="ext-fields-grid">`;
+    sec.fields.forEach(f=>{
+      const raw=combined[f.key];
+      const val=Array.isArray(raw)?raw.join(', '):(raw!=null?String(raw):'');
+      const isTbc=!val||val==='TBC';
+      if(f.type==='select'){
+        html+=`<div class="ext-field"><label>${f.label}</label>
+          <select onchange="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif">
+          ${f.opts.map(o=>`<option value="${o}"${val===o?' selected':''}>${o}</option>`).join('')}
+          </select></div>`;
+      } else if(f.type==='textarea'){
+        html+=`</div><div class="ext-field" style="margin-bottom:6px">
+          <label>${f.label}</label>
+          <textarea oninput="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" class="${isTbc?'tbc':''}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:52px;width:100%">${val}</textarea>
+        </div><div class="ext-fields-grid">`;
+      } else {
+        html+=`<div class="ext-field"><label>${f.label}</label>
+          <input type="${f.type||'text'}" value="${val.replace(/"/g,'&quot;')}" oninput="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" class="${isTbc?'tbc':''}">
+        </div>`;
+      }
+    });
+    html+=`</div></div>`;
+  });
+  document.getElementById('edit-form-container').innerHTML=html;
+}
+
+async function saveEditProduct(){
+  const el=document.getElementById('edit-alert');
+  el.style.display='block';
+  el.className='alert alert-info';
+  el.textContent='Saving changes…';
+  document.getElementById('btn-save-edit').disabled=true;
+  try{
+    // Update products table
+    const{error:pe}=await sb.from('products').update({
+      product_name:EP.productData.product_name||null,
+      product_type:EP.productData.product_type||null,
+      status:EP.productData.status||null,
+      plan_type:EP.productData.plan_type||null,
+      currency:EP.productData.currency||null,
+      premium_term:EP.productData.premium_term||null,
+      policy_term:EP.productData.policy_term||null,
+      ecv_scw_option:EP.productData.ecv_scw_option||null,
+      ownership:EP.productData.ownership||null,
+      entry_age_min:EP.productData.entry_age_min||null,
+      entry_age_max:EP.productData.entry_age_max||null,
+      entry_age_notes:EP.productData.entry_age_notes||null,
+      eligible_countries:EP.productData.eligible_countries||null,
+      nftf_countries:EP.productData.nftf_countries||null,
+      us_canada_persons:EP.productData.us_canada_persons||null,
+      non_med_limit:EP.productData.non_med_limit||null,
+      death_benefit:EP.productData.death_benefit||null,
+      terminal_illness:EP.productData.terminal_illness||null,
+      non_lapse_guarantee:EP.productData.non_lapse_guarantee||null,
+      death_payout_options:EP.productData.death_payout_options||null,
+      breakeven_year:EP.productData.breakeven_year||null,
+      num_indices:EP.productData.num_indices||null,
+      num_indexed_accounts:EP.productData.num_indexed_accounts||null,
+      net_premium_allocation:EP.productData.net_premium_allocation||null,
+      index_premium_allocation:EP.productData.index_premium_allocation||null,
+      index_performance_charges:EP.productData.index_performance_charges||null,
+      partial_withdrawal:EP.productData.partial_withdrawal||null,
+      free_partial_withdrawal:EP.productData.free_partial_withdrawal||null,
+      loan_features:EP.productData.loan_features||null,
+      policy_loan_interest:EP.productData.policy_loan_interest||null,
+      premium_holiday:EP.productData.premium_holiday||null,
+      top_up:EP.productData.top_up||null,
+      minimum_premium:EP.productData.minimum_premium||null,
+      backdating:EP.productData.backdating||null,
+      premium_charge:EP.productData.premium_charge||null,
+      policy_fee:EP.productData.policy_fee||null,
+      surrender_charge:EP.productData.surrender_charge||null,
+      coi_charges:EP.productData.coi_charges||null,
+      other_charges:EP.productData.other_charges||null,
+    }).eq('product_id',EP.id);
+    if(pe) throw new Error(`Products update failed: ${pe.message}`);
+
+    // Update or insert product_rates
+    const ratesPayload={
+      product_id:EP.id,
+      effective_date:EP.ratesData.effective_date||new Date().toISOString().split('T')[0],
+      guaranteed_rate:EP.ratesData.guaranteed_rate||null,
+      current_rate:EP.ratesData.current_rate||null,
+      minimum_rate:EP.ratesData.minimum_rate||null,
+      cumulative_guarantee:EP.ratesData.cumulative_guarantee||null,
+      loyalty_rate:EP.ratesData.loyalty_rate||null,
+      index_type:EP.ratesData.index_type||null,
+      cap_rate:EP.ratesData.cap_rate||null,
+      floor_rate:EP.ratesData.floor_rate||null,
+      participation_rate:EP.ratesData.participation_rate||null,
+      multiplier:EP.ratesData.multiplier||null,
+      source:'Edited via Product Brain',
+    };
+    if(EP.ratesId){
+      const{error:re}=await sb.from('product_rates').update(ratesPayload).eq('rate_id',EP.ratesId);
+      if(re) throw new Error(`Rates update failed: ${re.message}`);
+    } else {
+      const{error:re}=await sb.from('product_rates').insert(ratesPayload);
+      if(re) throw new Error(`Rates insert failed: ${re.message}`);
+    }
+
+    el.className='alert alert-ok';
+    el.textContent='✓ Changes saved successfully.';
+    // Refresh the page title
+    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
+  }catch(e){
+    el.className='alert alert-err';
+    el.textContent='Save failed: '+e.message;
+  }
+  document.getElementById('btn-save-edit').disabled=false;
+}
+
+async function deleteProduct(){
+  if(!EP.id) return;
+  const name=EP.productData.product_name||EP.productData.product_code||'this product';
+  if(!confirm(`Delete "${name}" permanently? This cannot be undone.`)) return;
+  const el=document.getElementById('edit-alert');
+  el.style.display='block';
+  el.className='alert alert-info';
+  el.textContent='Deleting…';
+  try{
+    // Delete rates first (FK constraint)
+    await sb.from('product_rates').delete().eq('product_id',EP.id);
+    const{error}=await sb.from('products').delete().eq('product_id',EP.id);
+    if(error) throw new Error(error.message);
+    el.className='alert alert-ok';
+    el.textContent='✓ Product deleted.';
+    setTimeout(()=>showPage('browse'),1200);
+  }catch(e){
+    el.className='alert alert-err';
+    el.textContent='Delete failed: '+e.message;
+  }
+}
+
+// ─── End Edit Product ──────────────────────────────────────────────────────────
+
 function setProgress(pct,text){
   document.getElementById('prog').style.width=pct+'%';
   if(text) document.getElementById('ext-status-text').textContent=text;
@@ -1146,6 +1409,7 @@ function renderProducts(){
   }
   document.getElementById('products-container').innerHTML=`<div class="product-grid">${filtered.map(p=>`
     <div class="product-card${S.selected.has(p.product_id)?' selected':''}" onclick="toggleSel('${p.product_id}')">
+      <button onclick="event.stopPropagation();showEditPage('${p.product_id}')" title="Edit product" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--text-muted);line-height:1" onmouseover="this.style.borderColor='var(--claret)';this.style.color='var(--claret)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">✏ Edit</button>
       <div class="pc-carrier">${p.carrier?.short_name||'Unknown'}</div>
       <div class="pc-name">${p.product_name||'—'}</div>
       <div class="pc-code">${p.product_code}</div>
