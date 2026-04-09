@@ -620,9 +620,11 @@ async function sbFetch(table,opts={}){
   return data;
 }
 
+const CONFLICT_COLS={carriers:'carrier_code',products:'product_code'};
+
 async function sbInsert(table,body,upsert=false){
   const q=upsert
-    ?sb.from(table).upsert(body,{onConflict:Object.keys(body)[0]})
+    ?sb.from(table).upsert(body,{onConflict:CONFLICT_COLS[table]||Object.keys(body)[0]})
     :sb.from(table).insert(body);
   const{data,error}=await q.select();
   if(error) throw new Error(error.message);
