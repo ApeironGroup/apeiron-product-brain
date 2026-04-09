@@ -1108,6 +1108,7 @@ async function openEditProduct(productId){
     const carrier=carriers.find(c=>c.carrier_id===EP.productData.carrier_id);
     EP.carrierData={...carrier||{}};
     EP.carrierId=carrier?.carrier_id||null;
+    EP._originalCarrierCode=carrier?.carrier_code||null;
     document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
     document.getElementById('edit-page-sub').textContent=`${carrier?.name||'Unknown carrier'} · ${EP.productData.product_code}`;
     renderEditForm();
@@ -1117,7 +1118,8 @@ async function openEditProduct(productId){
 }
 
 function renderEditForm(){
-  const combined={...EP.carrierData,...EP.productData,...EP.ratesData};
+  // Keep carrier fields separate — productData spread must not overwrite them
+  const combined={...EP.productData,...EP.ratesData,...EP.carrierData};
   let html='';
   EDIT_SECTIONS.forEach(sec=>{
     html+=`<div class="card" style="margin-bottom:14px">
@@ -1164,7 +1166,7 @@ async function saveEditProduct(){
       const{error:ce}=await sb.from('carriers').update({
         name:EP.carrierData.name||null,
         short_name:EP.carrierData.short_name||null,
-        carrier_code:EP.carrierData.carrier_code||null,
+        carrier_code:EP.carrierData.carrier_code||EP._originalCarrierCode, // never null — required field
         jurisdiction:jurArr,
         regulatory_regime:EP.carrierData.regulatory_regime||null,
         governing_law:EP.carrierData.governing_law||null,
