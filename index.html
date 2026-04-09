@@ -1008,6 +1008,16 @@ function mergeAllExtracted(){
 // ─── Edit Product ─────────────────────────────────────────────────────────────
 
 const EDIT_SECTIONS=[
+  {label:'Insurance company',fields:[
+    {key:'name',label:'Company full name',type:'text',table:'carrier'},
+    {key:'short_name',label:'Short name',type:'text',table:'carrier'},
+    {key:'carrier_code',label:'Carrier code',type:'text',table:'carrier'},
+    {key:'jurisdiction',label:'Jurisdiction',type:'text',table:'carrier'},
+    {key:'regulatory_regime',label:'Regulatory regime',type:'text',table:'carrier'},
+    {key:'governing_law',label:'Governing law',type:'text',table:'carrier'},
+    {key:'financial_strength_rating',label:'Financial strength rating',type:'text',table:'carrier'},
+    {key:'capital_adequacy_ratio',label:'Capital adequacy ratio',type:'text',table:'carrier'},
+  ]},
   {label:'Product identity',fields:[
     {key:'product_name',label:'Product name',type:'text'},
     {key:'product_code',label:'Product code',type:'text'},
@@ -1078,7 +1088,7 @@ const EDIT_SECTIONS=[
   ]},
 ];
 
-let EP={id:null,productData:{},ratesData:{},ratesId:null}; // edit page state
+let EP={id:null,productData:{},ratesData:{},ratesId:null,carrierData:{},carrierId:null}; // edit page state
 
 async function openEditProduct(productId){
   EP={id:productId,productData:{},ratesData:{},ratesId:null};
@@ -1096,6 +1106,8 @@ async function openEditProduct(productId){
     EP.ratesData=rates.length?{...rates[0]}:{};
     EP.ratesId=rates.length?rates[0].rate_id:null;
     const carrier=carriers.find(c=>c.carrier_id===EP.productData.carrier_id);
+    EP.carrierData={...carrier||{}};
+    EP.carrierId=carrier?.carrier_id||null;
     document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
     document.getElementById('edit-page-sub').textContent=`${carrier?.name||'Unknown carrier'} · ${EP.productData.product_code}`;
     renderEditForm();
@@ -1105,29 +1117,30 @@ async function openEditProduct(productId){
 }
 
 function renderEditForm(){
-  const combined={...EP.productData,...EP.ratesData};
+  const combined={...EP.carrierData,...EP.productData,...EP.ratesData};
   let html='';
   EDIT_SECTIONS.forEach(sec=>{
     html+=`<div class="card" style="margin-bottom:14px">
       <div class="card-title">${sec.label}</div>
       <div class="ext-fields-grid">`;
     sec.fields.forEach(f=>{
+      const storeIn=f.table==='carrier'?'carrierData':f.table==='rates'?'ratesData':'productData';
       const raw=combined[f.key];
       const val=Array.isArray(raw)?raw.join(', '):(raw!=null?String(raw):'');
       const isTbc=!val||val==='TBC';
       if(f.type==='select'){
         html+=`<div class="ext-field"><label>${f.label}</label>
-          <select onchange="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif">
+          <select onchange="EP.${storeIn}['${f.key}']=this.value" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif">
           ${f.opts.map(o=>`<option value="${o}"${val===o?' selected':''}>${o}</option>`).join('')}
           </select></div>`;
       } else if(f.type==='textarea'){
         html+=`</div><div class="ext-field" style="margin-bottom:6px">
           <label>${f.label}</label>
-          <textarea oninput="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" class="${isTbc?'tbc':''}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:52px;width:100%">${val}</textarea>
+          <textarea oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:52px;width:100%">${val}</textarea>
         </div><div class="ext-fields-grid">`;
       } else {
         html+=`<div class="ext-field"><label>${f.label}</label>
-          <input type="${f.type||'text'}" value="${val.replace(/"/g,'&quot;')}" oninput="EP.${f.table?'ratesData':'productData'}['${f.key}']=this.value" class="${isTbc?'tbc':''}">
+          <input type="${f.type||'text'}" value="${val.replace(/"/g,'&quot;')}" oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}">
         </div>`;
       }
     });
@@ -1143,6 +1156,21 @@ async function saveEditProduct(){
   el.textContent='Saving changes…';
   document.getElementById('btn-save-edit').disabled=true;
   try{
+    // Update carriers table
+    if(EP.carrierId){
+      const{error:ce}=await sb.from('carriers').update({
+        name:EP.carrierData.name||null,
+        short_name:EP.carrierData.short_name||null,
+        carrier_code:EP.carrierData.carrier_code||null,
+        jurisdiction:EP.carrierData.jurisdiction||null,
+        regulatory_regime:EP.carrierData.regulatory_regime||null,
+        governing_law:EP.carrierData.governing_law||null,
+        financial_strength_rating:EP.carrierData.financial_strength_rating||null,
+        capital_adequacy_ratio:EP.carrierData.capital_adequacy_ratio||null,
+      }).eq('carrier_id',EP.carrierId);
+      if(ce) throw new Error(`Carrier update failed: ${ce.message}`);
+    }
+
     // Update products table
     const{error:pe}=await sb.from('products').update({
       product_name:EP.productData.product_name||null,
@@ -1213,8 +1241,8 @@ async function saveEditProduct(){
 
     el.className='alert alert-ok';
     el.textContent='✓ Changes saved successfully.';
-    // Refresh the page title
     document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
+    document.getElementById('edit-page-sub').textContent=`${EP.carrierData.name||'Unknown carrier'} · ${EP.productData.product_code}`;
   }catch(e){
     el.className='alert alert-err';
     el.textContent='Save failed: '+e.message;
