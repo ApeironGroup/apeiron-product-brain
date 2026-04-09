@@ -436,17 +436,23 @@ input[type=file]{display:none}
       </div>
     </div>
 
-    <!-- Edit Product -->
+    <!-- View / Edit Product -->
     <div id="page-edit" class="page">
       <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="page-title" id="edit-page-title">Edit product</div>
+          <div class="page-title" id="edit-page-title">Product details</div>
           <div class="page-sub" id="edit-page-sub">Loading…</div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-ghost btn-sm" onclick="showPage('browse')">← Back to browse</button>
-          <button class="btn btn-outline btn-sm" id="btn-delete-product" onclick="deleteProduct()" style="color:#8a1a1a;border-color:#f0a8a8">Delete product</button>
-          <button class="btn btn-primary btn-sm" onclick="saveEditProduct()" id="btn-save-edit">Save changes</button>
+          <span id="view-mode-btns">
+            <button class="btn btn-primary btn-sm" onclick="enterEditMode()">✏ Edit product</button>
+          </span>
+          <span id="edit-mode-btns" style="display:none;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="cancelEditMode()">Cancel</button>
+            <button class="btn btn-outline btn-sm" onclick="deleteProduct()" style="color:#8a1a1a;border-color:#f0a8a8">Delete</button>
+            <button class="btn btn-primary btn-sm" onclick="saveEditProduct()" id="btn-save-edit">Save changes</button>
+          </span>
         </div>
       </div>
       <div id="edit-alert" style="display:none;margin-bottom:14px"></div>
@@ -1088,10 +1094,10 @@ const EDIT_SECTIONS=[
   ]},
 ];
 
-let EP={id:null,productData:{},ratesData:{},ratesId:null,carrierData:{},carrierId:null}; // edit page state
+let EP={id:null,productData:{},ratesData:{},ratesId:null,carrierData:{},carrierId:null,editMode:false}; // view/edit page state
 
 async function openEditProduct(productId){
-  EP={id:productId,productData:{},ratesData:{},ratesId:null};
+  EP={id:productId,productData:{},ratesData:{},ratesId:null,carrierData:{},carrierId:null,editMode:false};
   document.getElementById('edit-alert').style.display='none';
   document.getElementById('edit-form-container').innerHTML='<div class="empty"><div class="empty-sub">Loading…</div></div>';
   document.getElementById('btn-save-edit').disabled=false;
@@ -1109,17 +1115,35 @@ async function openEditProduct(productId){
     EP.carrierData={...carrier||{}};
     EP.carrierId=carrier?.carrier_id||null;
     EP._originalCarrierCode=carrier?.carrier_code||null;
-    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
+    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Product details';
     document.getElementById('edit-page-sub').textContent=`${carrier?.name||'Unknown carrier'} · ${EP.productData.product_code}`;
+    setEditModeUI(false);
     renderEditForm();
   }catch(e){
     document.getElementById('edit-form-container').innerHTML=`<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Failed to load</div><div class="empty-sub">${e.message}</div></div>`;
   }
 }
 
+function setEditModeUI(editing){
+  EP.editMode=editing;
+  document.getElementById('view-mode-btns').style.display=editing?'none':'inline-flex';
+  document.getElementById('edit-mode-btns').style.display=editing?'inline-flex':'none';
+  document.getElementById('edit-alert').style.display='none';
+}
+
+function enterEditMode(){
+  setEditModeUI(true);
+  renderEditForm();
+}
+
+function cancelEditMode(){
+  setEditModeUI(false);
+  renderEditForm();
+}
+
 function renderEditForm(){
-  // Keep carrier fields separate — productData spread must not overwrite them
   const combined={...EP.productData,...EP.ratesData,...EP.carrierData};
+  const ro=!EP.editMode; // read-only when not in edit mode
   let html='';
   EDIT_SECTIONS.forEach(sec=>{
     html+=`<div class="card" style="margin-bottom:14px">
@@ -1130,20 +1154,37 @@ function renderEditForm(){
       const raw=combined[f.key];
       const val=Array.isArray(raw)?raw.join(', '):(raw!=null?String(raw):'');
       const isTbc=!val||val==='TBC';
-      if(f.type==='select'){
-        html+=`<div class="ext-field"><label>${f.label}</label>
-          <select onchange="EP.${storeIn}['${f.key}']=this.value" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif">
-          ${f.opts.map(o=>`<option value="${o}"${val===o?' selected':''}>${o}</option>`).join('')}
-          </select></div>`;
-      } else if(f.type==='textarea'){
-        html+=`</div><div class="ext-field" style="margin-bottom:6px">
-          <label>${f.label}</label>
-          <textarea oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:52px;width:100%">${val}</textarea>
-        </div><div class="ext-fields-grid">`;
+      const displayVal=isTbc?'—':val;
+      if(ro){
+        // Read-only: plain styled text
+        if(f.type==='textarea'){
+          html+=`</div><div class="ext-field" style="margin-bottom:6px">
+            <label style="font-size:10px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px">${f.label}</label>
+            <div style="font-size:12px;color:${isTbc?'var(--text-light)':'var(--text-primary)'};padding:7px 0;line-height:1.6;${isTbc?'font-style:italic':''}">${displayVal}</div>
+          </div><div class="ext-fields-grid">`;
+        } else {
+          html+=`<div class="ext-field">
+            <label style="font-size:10px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px">${f.label}</label>
+            <div style="font-size:12px;color:${isTbc?'var(--text-light)':'var(--text-primary)'};padding:7px 0;${isTbc?'font-style:italic':''}">${displayVal}</div>
+          </div>`;
+        }
       } else {
-        html+=`<div class="ext-field"><label>${f.label}</label>
-          <input type="${f.type||'text'}" value="${val.replace(/"/g,'&quot;')}" oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}">
-        </div>`;
+        // Edit mode: inputs
+        if(f.type==='select'){
+          html+=`<div class="ext-field"><label>${f.label}</label>
+            <select onchange="EP.${storeIn}['${f.key}']=this.value" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif">
+            ${f.opts.map(o=>`<option value="${o}"${val===o?' selected':''}>${o}</option>`).join('')}
+            </select></div>`;
+        } else if(f.type==='textarea'){
+          html+=`</div><div class="ext-field" style="margin-bottom:6px">
+            <label>${f.label}</label>
+            <textarea oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:52px;width:100%">${val}</textarea>
+          </div><div class="ext-fields-grid">`;
+        } else {
+          html+=`<div class="ext-field"><label>${f.label}</label>
+            <input type="${f.type||'text'}" value="${val.replace(/"/g,'&quot;')}" oninput="EP.${storeIn}['${f.key}']=this.value" class="${isTbc?'tbc':''}">
+          </div>`;
+        }
       }
     });
     html+=`</div></div>`;
@@ -1246,8 +1287,10 @@ async function saveEditProduct(){
 
     el.className='alert alert-ok';
     el.textContent='✓ Changes saved successfully.';
-    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Edit product';
+    document.getElementById('edit-page-title').textContent=EP.productData.product_name||'Product details';
     document.getElementById('edit-page-sub').textContent=`${EP.carrierData.name||'Unknown carrier'} · ${EP.productData.product_code}`;
+    setEditModeUI(false);
+    renderEditForm();
   }catch(e){
     el.className='alert alert-err';
     el.textContent='Save failed: '+e.message;
@@ -1442,7 +1485,7 @@ function renderProducts(){
   }
   document.getElementById('products-container').innerHTML=`<div class="product-grid">${filtered.map(p=>`
     <div class="product-card${S.selected.has(p.product_id)?' selected':''}" onclick="toggleSel('${p.product_id}')">
-      <button onclick="event.stopPropagation();showEditPage('${p.product_id}')" title="Edit product" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--text-muted);line-height:1" onmouseover="this.style.borderColor='var(--claret)';this.style.color='var(--claret)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">✏ Edit</button>
+      <button onclick="event.stopPropagation();showEditPage('${p.product_id}')" title="View product" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--text-muted);line-height:1" onmouseover="this.style.borderColor='var(--claret)';this.style.color='var(--claret)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">View →</button>
       <div class="pc-carrier">${p.carrier?.short_name||'Unknown'}</div>
       <div class="pc-name">${p.product_name||'—'}</div>
       <div class="pc-code">${p.product_code}</div>
