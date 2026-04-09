@@ -51,8 +51,8 @@ index_type, cap_rate, guaranteed_min_cap, floor_rate, participation_rate,
 min_participation_rate, multiplier, illustration_rate,
 tbc_fields (array of field names not found)`;
 
-    // Extract each PDF sequentially, then merge — non-TBC values win over TBC
-    async function extractOnePdf(b64: string): Promise<Record<string, unknown>> {
+    // Extract a single PDF — returns extracted data + token usage
+    async function extractOnePdf(b64: string): Promise<{ data: Record<string, unknown>; inputTokens: number }> {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -73,31 +73,15 @@ tbc_fields (array of field names not found)`;
       if (j.error) throw new Error(`Anthropic error: ${JSON.stringify(j.error)}`);
       if (!j.content) throw new Error(`Unexpected response: ${JSON.stringify(j)}`);
       const raw = j.content.map((b: { text?: string }) => b.text || "").join("");
-      return JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const data = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const inputTokens: number = j.usage?.input_tokens ?? 0;
+      return { data, inputTokens };
     }
 
-    // Process sequentially with a short pause between calls to avoid rate limits
-    const results: Record<string, unknown>[] = [];
-    for (let i = 0; i < pdfs.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 65000)); // 65s gap — stay within 10k TPM/min free tier
-      results.push(await extractOnePdf(pdfs[i]));
-    }
+    // Single PDF per call now (client manages rate limiting using returned token count)
+    const { data: extracted, inputTokens } = await extractOnePdf(pdfs[0]);
 
-    // Merge: first result is base, subsequent results fill in TBC/missing fields
-    const merged: Record<string, unknown> = { ...results[0] };
-    for (let i = 1; i < results.length; i++) {
-      for (const [key, val] of Object.entries(results[i])) {
-        if (key === "tbc_fields") continue;
-        const existing = merged[key];
-        const isTbc = !existing || existing === "TBC" || (Array.isArray(existing) && existing.length === 0);
-        if (isTbc && val && val !== "TBC") merged[key] = val;
-      }
-    }
-    // Rebuild tbc_fields from merged result
-    const allFields = Object.keys(results[0]).filter(k => k !== "tbc_fields");
-    merged["tbc_fields"] = allFields.filter(k => !merged[k] || merged[k] === "TBC");
-
-    return new Response(JSON.stringify(merged), {
+    return new Response(JSON.stringify({ data: extracted, inputTokens }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
