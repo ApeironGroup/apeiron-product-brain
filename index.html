@@ -731,7 +731,7 @@ function showExtractionResult(){
   document.getElementById('prog').style.width='100%';
   const doneCount=S.files.filter(f=>f.extractState==='extracted').length;
   const totalCount=S.files.length;
-  const moreRunning=S.extractQueue.length>0||S.extracting;
+  const moreRunning=S.queueRunning&&S.files.some(f=>f.extractState==='queued'||f.extractState==='extracting');
   document.getElementById('ext-status-text').textContent=
     moreRunning
       ? `${doneCount} of ${totalCount} PDFs extracted — more processing…`
